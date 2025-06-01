@@ -133,18 +133,50 @@ def RankAssets(StockDataDict: dict[str, pd.DataFrame]) -> pd.DataFrame:
 
             # Get the latest values
             # Use .iloc[-1] for the last row, handle potential NaNs by filling or checking
-            LatestRSI = StockDf['RSI'].iloc[-1] if pd.notna(StockDf['RSI'].iloc[-1]) else 0
-            LatestMACD = StockDf['MACD'].iloc[-1] if pd.notna(StockDf['MACD'].iloc[-1]) else 0
-            LatestSignalLine = StockDf['SignalLine'].iloc[-1] if pd.notna(StockDf['SignalLine'].iloc[-1]) else 0
+
+            # RSI
+            TempRSI = StockDf['RSI'].iloc[-1]
+            if isinstance(TempRSI, (pd.Series, pd.DataFrame)):
+                raise TypeError(f"For {TickerSymbol}, RSI value from iloc[-1] is unexpectedly a Series/DataFrame: {TempRSI} (Type: {type(TempRSI)})")
+            LatestRSI = TempRSI if pd.notna(TempRSI) else 0
+
+            # MACD
+            TempMACD = StockDf['MACD'].iloc[-1]
+            if isinstance(TempMACD, (pd.Series, pd.DataFrame)):
+                raise TypeError(f"For {TickerSymbol}, MACD value from iloc[-1] is unexpectedly a Series/DataFrame: {TempMACD} (Type: {type(TempMACD)})")
+            LatestMACD = TempMACD if pd.notna(TempMACD) else 0
+
+            # SignalLine
+            TempSignalLine = StockDf['SignalLine'].iloc[-1]
+            if isinstance(TempSignalLine, (pd.Series, pd.DataFrame)):
+                raise TypeError(f"For {TickerSymbol}, SignalLine value from iloc[-1] is unexpectedly a Series/DataFrame: {TempSignalLine} (Type: {type(TempSignalLine)})")
+            LatestSignalLine = TempSignalLine if pd.notna(TempSignalLine) else 0
+
+            # Close
             LatestClose = StockDf['Close'].iloc[-1]
+            if isinstance(LatestClose, (pd.Series, pd.DataFrame)): # Should already be scalar from yf, but good check
+                raise TypeError(f"For {TickerSymbol}, Close value from iloc[-1] is unexpectedly a Series/DataFrame: {LatestClose} (Type: {type(LatestClose)})")
 
-            LatestSMA20 = StockDf['SMA_20'].iloc[-1] if 'SMA_20' in StockDf.columns and pd.notna(StockDf['SMA_20'].iloc[-1]) else LatestClose
-            LatestSMA50 = StockDf['SMA_50'].iloc[-1] if 'SMA_50' in StockDf.columns and pd.notna(StockDf['SMA_50'].iloc[-1]) else LatestClose
-            LatestEMA20 = StockDf['EMA_20'].iloc[-1] if 'EMA_20' in StockDf.columns and pd.notna(StockDf['EMA_20'].iloc[-1]) else LatestClose
-            LatestEMA50 = StockDf['EMA_50'].iloc[-1] if 'EMA_50' in StockDf.columns and pd.notna(StockDf['EMA_50'].iloc[-1]) else LatestClose
+            # Common function for MA and MiddleBand extraction
+            def get_latest_indicator_value(column_name, default_value):
+                if column_name in StockDf.columns:
+                    temp_val = StockDf[column_name].iloc[-1]
+                    if isinstance(temp_val, (pd.Series, pd.DataFrame)):
+                        raise TypeError(f"For {TickerSymbol}, {column_name} value from iloc[-1] is unexpectedly a Series/DataFrame: {temp_val} (Type: {type(temp_val)})")
+                    return temp_val if pd.notna(temp_val) else default_value
+                return default_value
 
-            LatestMiddleBand = StockDf['MiddleBand'].iloc[-1] if 'MiddleBand' in StockDf.columns and pd.notna(StockDf['MiddleBand'].iloc[-1]) else LatestClose
-            LatestMomentum = StockDf['Momentum'].iloc[-1] if pd.notna(StockDf['Momentum'].iloc[-1]) else 0
+            LatestSMA20 = get_latest_indicator_value('SMA_20', LatestClose)
+            LatestSMA50 = get_latest_indicator_value('SMA_50', LatestClose)
+            LatestEMA20 = get_latest_indicator_value('EMA_20', LatestClose)
+            LatestEMA50 = get_latest_indicator_value('EMA_50', LatestClose)
+            LatestMiddleBand = get_latest_indicator_value('MiddleBand', LatestClose)
+
+            # Momentum
+            TempMomentum = StockDf['Momentum'].iloc[-1]
+            if isinstance(TempMomentum, (pd.Series, pd.DataFrame)):
+                raise TypeError(f"For {TickerSymbol}, Momentum value from iloc[-1] is unexpectedly a Series/DataFrame: {TempMomentum} (Type: {type(TempMomentum)})")
+            LatestMomentum = TempMomentum if pd.notna(TempMomentum) else 0
 
             CompositeScore = 0
 

@@ -1,14 +1,18 @@
 import unittest
 import pandas as pd
 import numpy as np
-from StockScreener import DownloadData, CalculateRSI, CalculateMACD, CalculateMovingAverages, CalculateBollingerBands, CalculatePriceMomentum, RankAssets
+# Import the module itself to allow direct patching of its functions
+import StockScreener as SS # Use an alias for convenience
+from StockScreener import RankAssets # We still need RankAssets directly for calling
+
+# We will access other functions like SS.CalculateRSI
 
 class TestStockScreener(unittest.TestCase):
 
     def test_DownloadData_valid_ticker(self):
         # This test relies on yfinance successfully fetching data, which can be slow or fail due to network.
         # For true unit tests, yf.download would be mocked. For this project, live calls are acceptable.
-        Data = DownloadData(TickerSymbols=['AAPL'], StartDate='2023-01-01', EndDate='2023-01-10', Interval='1d')
+        Data = SS.DownloadData(TickerSymbols=['AAPL'], StartDate='2023-01-01', EndDate='2023-01-10', Interval='1d')
         self.assertIsInstance(Data, dict)
         self.assertIn('AAPL', Data)
         self.assertIsInstance(Data['AAPL'], pd.DataFrame)
@@ -17,14 +21,14 @@ class TestStockScreener(unittest.TestCase):
         # else: The function is expected to return an empty DF if download fails, which is handled by next test.
 
     def test_DownloadData_invalid_ticker(self):
-        Data = DownloadData(TickerSymbols=['INVALIDTICKERXYZ'], StartDate='2023-01-01', EndDate='2023-01-10', Interval='1d')
+        Data = SS.DownloadData(TickerSymbols=['INVALIDTICKERXYZ'], StartDate='2023-01-01', EndDate='2023-01-10', Interval='1d')
         self.assertIsInstance(Data, dict)
         self.assertIn('INVALIDTICKERXYZ', Data)
         self.assertTrue(Data['INVALIDTICKERXYZ'].empty) # As per DownloadData design for errors/no data
 
     def test_DownloadData_no_data_date_range(self):
         # Using a future date range where no data should exist
-        Data = DownloadData(TickerSymbols=['AAPL'], StartDate='2099-01-01', EndDate='2099-01-10', Interval='1d')
+        Data = SS.DownloadData(TickerSymbols=['AAPL'], StartDate='2099-01-01', EndDate='2099-01-10', Interval='1d')
         self.assertIsInstance(Data, dict)
         self.assertIn('AAPL', Data)
         self.assertTrue(Data['AAPL'].empty)
@@ -46,7 +50,7 @@ class TestStockScreener(unittest.TestCase):
 
     def test_CalculateRSI(self):
         DefaultWindow = 14
-        RsiSeries = CalculateRSI(self.RsiTestData.copy(), Window=DefaultWindow)
+        RsiSeries = SS.CalculateRSI(self.RsiTestData.copy(), Window=DefaultWindow)
         self.assertIsInstance(RsiSeries, pd.Series)
         self.assertEqual(len(RsiSeries), len(self.RsiTestData))
         self.assertTrue(RsiSeries.iloc[:DefaultWindow-1].isnull().all())
@@ -57,7 +61,7 @@ class TestStockScreener(unittest.TestCase):
         self.assertTrue(0 <= RsiSeries.iloc[-1] <= 100)
 
         # Test with constant price data - expect NaN or a specific value like 100 if gain=loss=0
-        RsiConstant = CalculateRSI(self.ConstantPriceData.copy(), Window=DefaultWindow)
+        RsiConstant = SS.CalculateRSI(self.ConstantPriceData.copy(), Window=DefaultWindow)
         # Depending on implementation details of .rolling().mean() with all zeros,
         # Gain and Loss can both be 0. RS = 0/0 -> NaN. RSI = 100 - (100 / (1+NaN)) -> NaN
         # Or, if Gain is 0 and Loss is 0, RS might be 1 (convention), then RSI = 50.
@@ -67,7 +71,7 @@ class TestStockScreener(unittest.TestCase):
 
 
     def test_CalculateMACD(self):
-        MacdDf = CalculateMACD(self.SampleData.copy()) # Uses default Fast=12, Slow=26, Signal=9
+        MacdDf = SS.CalculateMACD(self.SampleData.copy()) # Uses default Fast=12, Slow=26, Signal=9
         self.assertIsInstance(MacdDf, pd.DataFrame)
         self.assertIn('MACD', MacdDf.columns)
         self.assertIn('SignalLine', MacdDf.columns)
@@ -82,7 +86,7 @@ class TestStockScreener(unittest.TestCase):
 
     def test_CalculateMovingAverages(self):
         Windows = [5, 10]
-        MaDf = CalculateMovingAverages(self.SampleData.copy(), Windows=Windows)
+        MaDf = SS.CalculateMovingAverages(self.SampleData.copy(), Windows=Windows)
         self.assertIsInstance(MaDf, pd.DataFrame)
         for W in Windows:
             self.assertIn(f'SMA_{W}', MaDf.columns)
@@ -100,7 +104,7 @@ class TestStockScreener(unittest.TestCase):
 
     def test_CalculateBollingerBands(self):
         Window = 5
-        BbDf = CalculateBollingerBands(self.SampleData.copy(), Window=Window)
+        BbDf = SS.CalculateBollingerBands(self.SampleData.copy(), Window=Window)
         self.assertIsInstance(BbDf, pd.DataFrame)
         self.assertIn('MiddleBand', BbDf.columns)
         self.assertIn('UpperBand', BbDf.columns)
@@ -112,7 +116,7 @@ class TestStockScreener(unittest.TestCase):
 
     def test_CalculatePriceMomentum(self):
         Period = 5
-        MomentumSeries = CalculatePriceMomentum(self.SampleData.copy(), Period=Period)
+        MomentumSeries = SS.CalculatePriceMomentum(self.SampleData.copy(), Period=Period)
         self.assertIsInstance(MomentumSeries, pd.Series)
         self.assertTrue(MomentumSeries.iloc[:Period].isnull().all())
         # Last value: Close[-1] - Close[-1-Period] = 95 - 100 = -5
@@ -227,6 +231,126 @@ class TestStockScreener(unittest.TestCase):
                 self.fail(f"RankAssets raised an unexpected ValueError with minimal data: {ve}")
         except Exception as e:
             self.fail(f"RankAssets raised an unexpected exception with minimal data: {e}")
+
+    def test_RankAssets_detects_series_in_latest_extraction(self):
+        NumRows = 22 # To pass MinDataPoints check
+        TestIndex = pd.date_range('2023-01-01', periods=NumRows, freq='D')
+
+        # Create a base DataFrame
+        BaseData = {
+            'Close': np.random.rand(NumRows) * 100 + 10,
+            'RSI': [50.0] * NumRows,
+            'MACD': [0.0] * NumRows,
+            'SignalLine': [0.0] * NumRows,
+            'SMA_20': [100.0] * NumRows, # Will be recalculated by RankAssets if not present
+            'EMA_20': [100.0] * NumRows, # Will be recalculated by RankAssets if not present
+            'SMA_50': [100.0] * NumRows, # Will be recalculated by RankAssets if not present
+            'EMA_50': [100.0] * NumRows, # Will be recalculated by RankAssets if not present
+            'MiddleBand': [100.0] * NumRows, # Will be recalculated by RankAssets if not present
+            'Momentum': [0.0] * NumRows # Will be recalculated by RankAssets if not present
+        }
+
+        # --- Test for RSI ---
+        TestDataRSI = pd.DataFrame(BaseData, index=TestIndex).copy()
+
+        # Simulate the 'RSI' column's last value being a single-element Series
+        RsiColValues = [50.0] * (NumRows - 1)
+        RsiColValues.append(pd.Series([75.0], index=[TestDataRSI.index[-1]]))
+        TestDataRSI['RSI'] = pd.Series(RsiColValues, index=TestDataRSI.index, dtype=object)
+
+        # Note: RankAssets internally calls indicator calculation functions like CalculateRSI.
+        # These calls will overwrite our manually set 'RSI' column *before* the latest value extraction.
+        # To test the extraction logic directly, we need to mock these calculation functions
+        # or make our pre-set column survive.
+        # For this test, the simplest way is to ensure RankAssets *uses* our pre-set column.
+        # The current RankAssets structure is:
+        #   StockDf.loc[:, 'RSI'] = CalculateRSI(StockDf)  <-- This overwrites
+        #   ...
+        #   LatestRSI = StockDf['RSI'].iloc[-1] if pd.notna(StockDf['RSI'].iloc[-1]) else 0
+        #
+        # To effectively test the type check on LatestRSI, the CalculateRSI (and others)
+        # within RankAssets must NOT run or must return our pre-crafted Series.
+        # This requires mocking. Let's assume for now the goal is to test the type check
+        # on data that *could* have come from a misbehaving (or non-scalar returning) iloc[-1].
+        #
+        # Given the current structure of RankAssets, it's difficult to inject a Series
+        # into `StockDf['RSI'].iloc[-1]` just before the check without mocking `CalculateRSI`
+        # itself to return a column where the last element is a Series.
+        #
+        # Let's adjust the test: We'll mock the indicator functions so they don't run,
+        # allowing our manually crafted columns to be read by the "Latest" extraction logic.
+
+        OriginalCalculateRSI = SS.CalculateRSI # Correct: Save from SS module
+        OriginalCalculateMACD = SS.CalculateMACD # Correct: Save from SS module
+        # Add mocks for all indicator calculations within RankAssets
+        OriginalCalculateMovingAverages = SS.CalculateMovingAverages # Correct: Save from SS module
+        OriginalCalculateBollingerBands = SS.CalculateBollingerBands # Correct: Save from SS module
+        OriginalCalculatePriceMomentum = SS.CalculatePriceMomentum # Correct: Save from SS module
+
+        def MockCalculateRSI(Data, Window=14): return Data['RSI'] # Returns the existing column
+        def MockCalculateMACD(Data, FastPeriod=12, SlowPeriod=26, SignalPeriod=9):
+            # Return a DataFrame with the existing MACD/SignalLine columns
+            Df = pd.DataFrame(index=Data.index)
+            Df['MACD'] = Data['MACD']
+            Df['SignalLine'] = Data['SignalLine']
+            Df['MACDHistogram'] = Data['MACD'] - Data['SignalLine'] # Dummy histogram
+            return Df
+        def MockCalculateMovingAverages(Data, Windows=[20,50]): return Data # Returns Data with existing MA columns
+        def MockCalculateBollingerBands(Data, Window=20, NumStdDev=2):
+            Df = pd.DataFrame(index=Data.index)
+            Df['MiddleBand'] = Data['MiddleBand']
+            Df['UpperBand'] = Data['MiddleBand'] + 10 # Dummy
+            Df['LowerBand'] = Data['MiddleBand'] - 10 # Dummy
+            return Df
+        def MockCalculatePriceMomentum(Data, Period=10): return Data['Momentum']
+
+        # Patch functions directly on the imported StockScreener module (SS)
+        SS.CalculateRSI = MockCalculateRSI
+        SS.CalculateMACD = MockCalculateMACD
+        SS.CalculateMovingAverages = MockCalculateMovingAverages
+        SS.CalculateBollingerBands = MockCalculateBollingerBands
+        SS.CalculatePriceMomentum = MockCalculatePriceMomentum
+
+        try:
+            # RankAssets is imported directly, so it will use the patched functions from SS
+            StockDataDictRSI = {'TEST_SERIES_RSI': TestDataRSI}
+            RankedDf_RSI = RankAssets(StockDataDictRSI) # Call RankAssets
+
+            # Check that the 'Error' column contains the expected TypeError message string
+            ErrorMsg_RSI = RankedDf_RSI.loc[RankedDf_RSI['Ticker'] == 'TEST_SERIES_RSI', 'Error'].iloc[0]
+            self.assertIsInstance(ErrorMsg_RSI, str)
+            self.assertIn("RSI value from iloc[-1] is unexpectedly a Series/DataFrame", ErrorMsg_RSI)
+            # Check that composite score is -1 as is typical for errors
+            Score_RSI = RankedDf_RSI.loc[RankedDf_RSI['Ticker'] == 'TEST_SERIES_RSI', 'CompositeScore'].iloc[0]
+            self.assertEqual(Score_RSI, -1)
+
+            # --- Test for MACD ---
+            TestDataMACD = pd.DataFrame(BaseData, index=TestIndex).copy()
+            # Reset RSI to be normal scalar for this MACD test
+            TestDataMACD.loc[:, 'RSI'] = [50.0] * NumRows
+
+            MacdColValues = [0.5] * (NumRows - 1)
+            MacdColValues.append(pd.Series([0.8], index=[TestDataMACD.index[-1]]))
+            TestDataMACD['MACD'] = pd.Series(MacdColValues, index=TestDataMACD.index, dtype=object)
+            # SignalLine can remain scalar
+            TestDataMACD.loc[:, 'SignalLine'] = [0.4] * NumRows
+
+            StockDataDictMACD = {'TEST_SERIES_MACD': TestDataMACD}
+            RankedDf_MACD = RankAssets(StockDataDictMACD) # Call RankAssets
+
+            ErrorMsg_MACD = RankedDf_MACD.loc[RankedDf_MACD['Ticker'] == 'TEST_SERIES_MACD', 'Error'].iloc[0]
+            self.assertIsInstance(ErrorMsg_MACD, str)
+            self.assertIn("MACD value from iloc[-1] is unexpectedly a Series/DataFrame", ErrorMsg_MACD)
+            Score_MACD = RankedDf_MACD.loc[RankedDf_MACD['Ticker'] == 'TEST_SERIES_MACD', 'CompositeScore'].iloc[0]
+            self.assertEqual(Score_MACD, -1)
+
+        finally:
+            # Restore original functions on the StockScreener module
+            SS.CalculateRSI = OriginalCalculateRSI
+            SS.CalculateMACD = OriginalCalculateMACD
+            SS.CalculateMovingAverages = OriginalCalculateMovingAverages
+            SS.CalculateBollingerBands = OriginalCalculateBollingerBands
+            SS.CalculatePriceMomentum = OriginalCalculatePriceMomentum
 
 
 if __name__ == '__main__':
