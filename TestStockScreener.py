@@ -167,6 +167,67 @@ class TestStockScreener(unittest.TestCase):
         self.assertNotEqual(RankedDf.loc[RankedDf['Ticker'] == 'SUFFICIENT', 'CompositeScore'].iloc[0], -1)
         self.assertTrue(pd.isnull(RankedDf.loc[RankedDf['Ticker'] == 'SUFFICIENT', 'Error'].iloc[0]))
 
+    def test_RankAssets_with_minimal_data(self):
+        # MinDataPoints in RankAssets is 20
+        MinDataPoints = 20
+
+        # Case 1: Data less than MinDataPoints (e.g., 5 rows)
+        DataFiveRows = pd.DataFrame({
+            'Open': [10]*5, 'High': [10]*5, 'Low': [10]*5, 'Close': [10, 11, 12, 11, 10], 'Volume': [100]*5
+        }, index=pd.date_range('2023-01-01', periods=5, freq='D'))
+
+        # Case 2: Data just enough or slightly more than MinDataPoints (e.g., 22 rows)
+        ClosePricesTwentyTwo = [10,11,12,13,14,15,16,17,18,19,20,21,22,21,20,19,18,17,16,15,14,13]
+        DataTwentyTwoRows = pd.DataFrame({
+            'Open': ClosePricesTwentyTwo, 'High': ClosePricesTwentyTwo, 'Low': ClosePricesTwentyTwo, 'Close': ClosePricesTwentyTwo, 'Volume': [100]*len(ClosePricesTwentyTwo)
+        }, index=pd.date_range('2023-01-01', periods=len(ClosePricesTwentyTwo), freq='D'))
+
+        # Case 3: Extremely minimal data (1 row)
+        DataOneRow = pd.DataFrame({
+            'Open': [10], 'High': [10], 'Low': [10], 'Close': [10], 'Volume': [100]
+        }, index=pd.date_range('2023-01-01', periods=1, freq='D'))
+
+        TestStockDict = {
+            'FIVE_ROWS': DataFiveRows,
+            'TWENTY_TWO_ROWS': DataTwentyTwoRows,
+            'ONE_ROW': DataOneRow
+        }
+
+        try:
+            RankedDf = RankAssets(TestStockDict)
+            self.assertIsInstance(RankedDf, pd.DataFrame)
+
+            # Check outcomes for tickers that should be filtered by MinDataPoints
+            ScoreFiveRows = RankedDf.loc[RankedDf['Ticker'] == 'FIVE_ROWS', 'CompositeScore'].iloc[0]
+            ErrorFiveRows = RankedDf.loc[RankedDf['Ticker'] == 'FIVE_ROWS', 'Error'].iloc[0]
+            self.assertEqual(ScoreFiveRows, -1)
+            self.assertIn("Insufficient data", ErrorFiveRows)
+
+            ScoreOneRow = RankedDf.loc[RankedDf['Ticker'] == 'ONE_ROW', 'CompositeScore'].iloc[0]
+            ErrorOneRow = RankedDf.loc[RankedDf['Ticker'] == 'ONE_ROW', 'Error'].iloc[0]
+            self.assertEqual(ScoreOneRow, -1)
+            self.assertIn("Insufficient data", ErrorOneRow)
+
+            # Check outcome for the ticker that passes MinDataPoints
+            # It should process without an "Insufficient data" error.
+            # Its score will depend on indicator calculations on minimal data (likely many NaNs).
+            ScoreTwentyTwoRows = RankedDf.loc[RankedDf['Ticker'] == 'TWENTY_TWO_ROWS', 'CompositeScore'].iloc[0]
+            ErrorTwentyTwoRows = RankedDf.loc[RankedDf['Ticker'] == 'TWENTY_TWO_ROWS', 'Error'].iloc[0]
+
+            # We expect a score to be calculated, not -1 from the insufficient data check.
+            # The score might be low (even 0) if all indicators result in NaN and defaults are 0.
+            self.assertNotEqual(ScoreTwentyTwoRows, -1, "Score for 22 rows should not be -1 due to insufficient data check.")
+            self.assertTrue(pd.isna(ErrorTwentyTwoRows) or "Insufficient data" not in ErrorTwentyTwoRows,
+                            f"Error for 22 rows should not be 'Insufficient data'. Got: {ErrorTwentyTwoRows}")
+
+        except ValueError as ve:
+            if "If using all scalar values, you must pass an index" in str(ve):
+                self.fail(f"RankAssets raised a 'scalar values' ValueError with minimal data: {ve}")
+            else:
+                self.fail(f"RankAssets raised an unexpected ValueError with minimal data: {ve}")
+        except Exception as e:
+            self.fail(f"RankAssets raised an unexpected exception with minimal data: {e}")
+
 
 if __name__ == '__main__':
     unittest.main()

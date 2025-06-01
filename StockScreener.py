@@ -43,16 +43,16 @@ def CalculateMACD(Data: pd.DataFrame, FastPeriod: int = 12, SlowPeriod: int = 26
     """
     EMAfast = Data['Close'].ewm(span=FastPeriod, adjust=False).mean()
     EMAslow = Data['Close'].ewm(span=SlowPeriod, adjust=False).mean()
-    MACDLine = EMAfast - EMAslow
+    MACDLine = EMAfast - EMAslow # Corrected: Fast - Slow
     SignalLine = MACDLine.ewm(span=SignalPeriod, adjust=False).mean()
     MACDHistogram = MACDLine - SignalLine
 
-    MACD_df = pd.DataFrame({
-        'MACD': MACDLine,
-        'SignalLine': SignalLine,
-        'MACDHistogram': MACDHistogram
-    })
-    return MACD_df
+    ReturnDf = pd.DataFrame(index=Data.index) # Initialize with Data's index
+    ReturnDf['MACD'] = MACDLine
+    ReturnDf['SignalLine'] = SignalLine
+    ReturnDf['MACDHistogram'] = MACDHistogram
+
+    return ReturnDf
 
 def CalculateMovingAverages(Data: pd.DataFrame, Windows: list[int] = [20, 50]) -> pd.DataFrame:
     """
@@ -74,12 +74,12 @@ def CalculateBollingerBands(Data: pd.DataFrame, Window: int = 20, NumStdDev: int
     UpperBand = MiddleBand + (StdDev * NumStdDev)
     LowerBand = MiddleBand - (StdDev * NumStdDev)
 
-    BB_df = pd.DataFrame({
-        'MiddleBand': MiddleBand,
-        'UpperBand': UpperBand,
-        'LowerBand': LowerBand
-    })
-    return BB_df
+    ReturnDf = pd.DataFrame(index=Data.index) # Initialize with Data's index
+    ReturnDf['MiddleBand'] = MiddleBand
+    ReturnDf['UpperBand'] = UpperBand
+    ReturnDf['LowerBand'] = LowerBand
+
+    return ReturnDf
 
 def CalculatePriceMomentum(Data: pd.DataFrame, Period: int = 10) -> pd.Series:
     """
