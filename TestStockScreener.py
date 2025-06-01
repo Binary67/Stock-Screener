@@ -232,125 +232,136 @@ class TestStockScreener(unittest.TestCase):
         except Exception as e:
             self.fail(f"RankAssets raised an unexpected exception with minimal data: {e}")
 
-    def test_RankAssets_detects_series_in_latest_extraction(self):
-        NumRows = 22 # To pass MinDataPoints check
-        TestIndex = pd.date_range('2023-01-01', periods=NumRows, freq='D')
-
-        # Create a base DataFrame
-        BaseData = {
-            'Close': np.random.rand(NumRows) * 100 + 10,
-            'RSI': [50.0] * NumRows,
-            'MACD': [0.0] * NumRows,
-            'SignalLine': [0.0] * NumRows,
-            'SMA_20': [100.0] * NumRows, # Will be recalculated by RankAssets if not present
-            'EMA_20': [100.0] * NumRows, # Will be recalculated by RankAssets if not present
-            'SMA_50': [100.0] * NumRows, # Will be recalculated by RankAssets if not present
-            'EMA_50': [100.0] * NumRows, # Will be recalculated by RankAssets if not present
-            'MiddleBand': [100.0] * NumRows, # Will be recalculated by RankAssets if not present
-            'Momentum': [0.0] * NumRows # Will be recalculated by RankAssets if not present
+    def _setup_mock_env(self, NumRows, TestIndex):
+        """Helper to create base data and mock indicator functions."""
+        BaseDataTemplate = {
+            'Close': [100.0 + i for i in range(NumRows)],
+            'RSI': [50.0] * NumRows, 'MACD': [0.0] * NumRows, 'SignalLine': [0.0] * NumRows,
+            'SMA_20': [100.0] * NumRows, 'EMA_20': [100.0] * NumRows,
+            'SMA_50': [100.0] * NumRows, 'EMA_50': [100.0] * NumRows,
+            'MiddleBand': [100.0] * NumRows, 'Momentum': [0.0] * NumRows,
         }
+        TestData = pd.DataFrame(BaseDataTemplate, index=TestIndex)
 
-        # --- Test for RSI ---
-        TestDataRSI = pd.DataFrame(BaseData, index=TestIndex).copy()
+        OriginalSSCalculateRSI = SS.CalculateRSI
+        OriginalSSCalculateMACD = SS.CalculateMACD
+        OriginalSSCalculateMovingAverages = SS.CalculateMovingAverages
+        OriginalSSCalculateBollingerBands = SS.CalculateBollingerBands
+        OriginalSSCalculatePriceMomentum = SS.CalculatePriceMomentum
 
-        # Simulate the 'RSI' column's last value being a single-element Series
-        RsiColValues = [50.0] * (NumRows - 1)
-        RsiColValues.append(pd.Series([75.0], index=[TestDataRSI.index[-1]]))
-        TestDataRSI['RSI'] = pd.Series(RsiColValues, index=TestDataRSI.index, dtype=object)
-
-        # Note: RankAssets internally calls indicator calculation functions like CalculateRSI.
-        # These calls will overwrite our manually set 'RSI' column *before* the latest value extraction.
-        # To test the extraction logic directly, we need to mock these calculation functions
-        # or make our pre-set column survive.
-        # For this test, the simplest way is to ensure RankAssets *uses* our pre-set column.
-        # The current RankAssets structure is:
-        #   StockDf.loc[:, 'RSI'] = CalculateRSI(StockDf)  <-- This overwrites
-        #   ...
-        #   LatestRSI = StockDf['RSI'].iloc[-1] if pd.notna(StockDf['RSI'].iloc[-1]) else 0
-        #
-        # To effectively test the type check on LatestRSI, the CalculateRSI (and others)
-        # within RankAssets must NOT run or must return our pre-crafted Series.
-        # This requires mocking. Let's assume for now the goal is to test the type check
-        # on data that *could* have come from a misbehaving (or non-scalar returning) iloc[-1].
-        #
-        # Given the current structure of RankAssets, it's difficult to inject a Series
-        # into `StockDf['RSI'].iloc[-1]` just before the check without mocking `CalculateRSI`
-        # itself to return a column where the last element is a Series.
-        #
-        # Let's adjust the test: We'll mock the indicator functions so they don't run,
-        # allowing our manually crafted columns to be read by the "Latest" extraction logic.
-
-        OriginalCalculateRSI = SS.CalculateRSI # Correct: Save from SS module
-        OriginalCalculateMACD = SS.CalculateMACD # Correct: Save from SS module
-        # Add mocks for all indicator calculations within RankAssets
-        OriginalCalculateMovingAverages = SS.CalculateMovingAverages # Correct: Save from SS module
-        OriginalCalculateBollingerBands = SS.CalculateBollingerBands # Correct: Save from SS module
-        OriginalCalculatePriceMomentum = SS.CalculatePriceMomentum # Correct: Save from SS module
-
-        def MockCalculateRSI(Data, Window=14): return Data['RSI'] # Returns the existing column
+        def MockCalculateRSI(Data, Window=14): return Data['RSI']
         def MockCalculateMACD(Data, FastPeriod=12, SlowPeriod=26, SignalPeriod=9):
-            # Return a DataFrame with the existing MACD/SignalLine columns
-            Df = pd.DataFrame(index=Data.index)
-            Df['MACD'] = Data['MACD']
-            Df['SignalLine'] = Data['SignalLine']
-            Df['MACDHistogram'] = Data['MACD'] - Data['SignalLine'] # Dummy histogram
-            return Df
-        def MockCalculateMovingAverages(Data, Windows=[20,50]): return Data # Returns Data with existing MA columns
+            Df = pd.DataFrame(index=Data.index); Df['MACD'] = Data['MACD']; Df['SignalLine'] = Data['SignalLine']; Df['MACDHistogram'] = Data['MACD'] - Data['SignalLine']; return Df
+        def MockCalculateMovingAverages(Data, Windows=[20,50]): return Data
         def MockCalculateBollingerBands(Data, Window=20, NumStdDev=2):
-            Df = pd.DataFrame(index=Data.index)
-            Df['MiddleBand'] = Data['MiddleBand']
-            Df['UpperBand'] = Data['MiddleBand'] + 10 # Dummy
-            Df['LowerBand'] = Data['MiddleBand'] - 10 # Dummy
-            return Df
+            Df = pd.DataFrame(index=Data.index); Df['MiddleBand'] = Data['MiddleBand']; Df['UpperBand'] = Data['MiddleBand'] + 10; Df['LowerBand'] = Data['MiddleBand'] - 10; return Df
         def MockCalculatePriceMomentum(Data, Period=10): return Data['Momentum']
 
-        # Patch functions directly on the imported StockScreener module (SS)
         SS.CalculateRSI = MockCalculateRSI
         SS.CalculateMACD = MockCalculateMACD
         SS.CalculateMovingAverages = MockCalculateMovingAverages
         SS.CalculateBollingerBands = MockCalculateBollingerBands
         SS.CalculatePriceMomentum = MockCalculatePriceMomentum
 
+        Originals = {
+            'RSI': OriginalSSCalculateRSI, 'MACD': OriginalSSCalculateMACD,
+            'MovingAverages': OriginalSSCalculateMovingAverages,
+            'BollingerBands': OriginalSSCalculateBollingerBands,
+            'PriceMomentum': OriginalSSCalculatePriceMomentum
+        }
+        return TestData, Originals
+
+    def _restore_mock_env(self, Originals):
+        """Helper to restore original indicator functions."""
+        SS.CalculateRSI = Originals['RSI']
+        SS.CalculateMACD = Originals['MACD']
+        SS.CalculateMovingAverages = Originals['MovingAverages']
+        SS.CalculateBollingerBands = Originals['BollingerBands']
+        SS.CalculatePriceMomentum = Originals['PriceMomentum']
+
+    def test_RankAssets_handles_single_element_series_extraction_correctly(self):
+        NumRows = 22
+        TestIndex = pd.date_range('2023-01-01', periods=NumRows, freq='D')
+        TestData, Originals = self._setup_mock_env(NumRows, TestIndex)
+
         try:
-            # RankAssets is imported directly, so it will use the patched functions from SS
-            StockDataDictRSI = {'TEST_SERIES_RSI': TestDataRSI}
-            RankedDf_RSI = RankAssets(StockDataDictRSI) # Call RankAssets
+            # Case 1: 'Close' column's last value is a single-element Series
+            TestDataCloseSingleSeries = TestData.copy()
+            CloseValues = [110.0] * (NumRows - 1)
+            CloseValues.append(pd.Series([120.0], index=[TestDataCloseSingleSeries.index[-1]]))
+            TestDataCloseSingleSeries['Close'] = pd.Series(CloseValues, index=TestIndex, dtype=object)
 
-            # Check that the 'Error' column contains the expected TypeError message string
-            ErrorMsg_RSI = RankedDf_RSI.loc[RankedDf_RSI['Ticker'] == 'TEST_SERIES_RSI', 'Error'].iloc[0]
-            self.assertIsInstance(ErrorMsg_RSI, str)
-            self.assertIn("RSI value from iloc[-1] is unexpectedly a Series/DataFrame", ErrorMsg_RSI)
-            # Check that composite score is -1 as is typical for errors
-            Score_RSI = RankedDf_RSI.loc[RankedDf_RSI['Ticker'] == 'TEST_SERIES_RSI', 'CompositeScore'].iloc[0]
-            self.assertEqual(Score_RSI, -1)
+            StockDataDict = {'CLOSE_SINGLE_SERIES': TestDataCloseSingleSeries}
+            RankedDf = RankAssets(StockDataDict)
+            ErrorMsg = RankedDf.loc[RankedDf['Ticker'] == 'CLOSE_SINGLE_SERIES', 'Error'].iloc[0]
+            Score = RankedDf.loc[RankedDf['Ticker'] == 'CLOSE_SINGLE_SERIES', 'CompositeScore'].iloc[0]
+            self.assertTrue(pd.isna(ErrorMsg), f"Expected no error for single-element Series in Close, but got: {ErrorMsg}")
+            self.assertNotEqual(Score, -1, "Score should not be -1 for single-element Series in Close")
 
-            # --- Test for MACD ---
-            TestDataMACD = pd.DataFrame(BaseData, index=TestIndex).copy()
-            # Reset RSI to be normal scalar for this MACD test
-            TestDataMACD.loc[:, 'RSI'] = [50.0] * NumRows
+            # Case 2: 'RSI' column's last value is a single-element Series
+            TestDataRSISingleSeries = TestData.copy()
+            RSIValues = [60.0] * (NumRows - 1)
+            RSIValues.append(pd.Series([65.0], index=[TestDataRSISingleSeries.index[-1]]))
+            TestDataRSISingleSeries['RSI'] = pd.Series(RSIValues, index=TestIndex, dtype=object)
 
-            MacdColValues = [0.5] * (NumRows - 1)
-            MacdColValues.append(pd.Series([0.8], index=[TestDataMACD.index[-1]]))
-            TestDataMACD['MACD'] = pd.Series(MacdColValues, index=TestDataMACD.index, dtype=object)
-            # SignalLine can remain scalar
-            TestDataMACD.loc[:, 'SignalLine'] = [0.4] * NumRows
-
-            StockDataDictMACD = {'TEST_SERIES_MACD': TestDataMACD}
-            RankedDf_MACD = RankAssets(StockDataDictMACD) # Call RankAssets
-
-            ErrorMsg_MACD = RankedDf_MACD.loc[RankedDf_MACD['Ticker'] == 'TEST_SERIES_MACD', 'Error'].iloc[0]
-            self.assertIsInstance(ErrorMsg_MACD, str)
-            self.assertIn("MACD value from iloc[-1] is unexpectedly a Series/DataFrame", ErrorMsg_MACD)
-            Score_MACD = RankedDf_MACD.loc[RankedDf_MACD['Ticker'] == 'TEST_SERIES_MACD', 'CompositeScore'].iloc[0]
-            self.assertEqual(Score_MACD, -1)
+            StockDataDict = {'RSI_SINGLE_SERIES': TestDataRSISingleSeries}
+            RankedDf = RankAssets(StockDataDict)
+            ErrorMsg = RankedDf.loc[RankedDf['Ticker'] == 'RSI_SINGLE_SERIES', 'Error'].iloc[0]
+            Score = RankedDf.loc[RankedDf['Ticker'] == 'RSI_SINGLE_SERIES', 'CompositeScore'].iloc[0]
+            self.assertTrue(pd.isna(ErrorMsg), f"Expected no error for single-element Series in RSI, but got: {ErrorMsg}")
+            self.assertNotEqual(Score, -1, "Score should not be -1 for single-element Series in RSI")
 
         finally:
-            # Restore original functions on the StockScreener module
-            SS.CalculateRSI = OriginalCalculateRSI
-            SS.CalculateMACD = OriginalCalculateMACD
-            SS.CalculateMovingAverages = OriginalCalculateMovingAverages
-            SS.CalculateBollingerBands = OriginalCalculateBollingerBands
-            SS.CalculatePriceMomentum = OriginalCalculatePriceMomentum
+            self._restore_mock_env(Originals)
+
+    def test_RankAssets_logs_error_for_unconvertible_series_or_dataframe_extraction(self):
+        NumRows = 22
+        TestIndex = pd.date_range('2023-01-01', periods=NumRows, freq='D')
+        TestData, Originals = self._setup_mock_env(NumRows, TestIndex)
+
+        try:
+            # Case 1: 'Close' column's last value is a multi-element Series
+            TestDataCloseMultiSeries = TestData.copy()
+            CloseValues = [110.0] * (NumRows - 1)
+            # Create a multi-element Series. The index for the Series itself doesn't matter as much as its length.
+            CloseValues.append(pd.Series([120.0, 121.0]))
+            TestDataCloseMultiSeries['Close'] = pd.Series(CloseValues, index=TestIndex, dtype=object)
+
+            StockDataDict = {'CLOSE_MULTI_SERIES': TestDataCloseMultiSeries}
+            RankedDf = RankAssets(StockDataDict)
+            ErrorMsg = RankedDf.loc[RankedDf['Ticker'] == 'CLOSE_MULTI_SERIES', 'Error'].iloc[0]
+            Score = RankedDf.loc[RankedDf['Ticker'] == 'CLOSE_MULTI_SERIES', 'CompositeScore'].iloc[0]
+            self.assertIn("multi-item Series", ErrorMsg)
+            self.assertEqual(Score, -1)
+
+            # Case 2: 'RSI' column's last value is a DataFrame
+            TestDataRSIDF = TestData.copy()
+            RSIValues = [60.0] * (NumRows - 1)
+            RSIValues.append(pd.DataFrame({'A': [65.0]}, index=[TestDataRSIDF.index[-1]]))
+            TestDataRSIDF['RSI'] = pd.Series(RSIValues, index=TestIndex, dtype=object)
+
+            StockDataDict = {'RSI_DATAFRAME': TestDataRSIDF}
+            RankedDf = RankAssets(StockDataDict)
+            ErrorMsg = RankedDf.loc[RankedDf['Ticker'] == 'RSI_DATAFRAME', 'Error'].iloc[0]
+            Score = RankedDf.loc[RankedDf['Ticker'] == 'RSI_DATAFRAME', 'CompositeScore'].iloc[0]
+            self.assertIn("is a DataFrame", ErrorMsg)
+            self.assertEqual(Score, -1)
+
+            # Case 3: 'MACD' column's last value is a multi-item Series
+            TestDataMACDMultiSeries = TestData.copy()
+            MACDValues = [0.5] * (NumRows-1)
+            MACDValues.append(pd.Series([0.8, 0.9]))
+            TestDataMACDMultiSeries['MACD'] = pd.Series(MACDValues, index=TestIndex, dtype=object)
+
+            StockDataDict = {'MACD_MULTI_SERIES': TestDataMACDMultiSeries}
+            RankedDf = RankAssets(StockDataDict)
+            ErrorMsg = RankedDf.loc[RankedDf['Ticker'] == 'MACD_MULTI_SERIES', 'Error'].iloc[0]
+            Score = RankedDf.loc[RankedDf['Ticker'] == 'MACD_MULTI_SERIES', 'CompositeScore'].iloc[0]
+            self.assertIn("multi-item Series", ErrorMsg)
+            self.assertEqual(Score, -1)
+
+        finally:
+            self._restore_mock_env(Originals)
 
 
 if __name__ == '__main__':

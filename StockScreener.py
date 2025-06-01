@@ -135,36 +135,66 @@ def RankAssets(StockDataDict: dict[str, pd.DataFrame]) -> pd.DataFrame:
             # Use .iloc[-1] for the last row, handle potential NaNs by filling or checking
 
             # RSI
-            TempRSI = StockDf['RSI'].iloc[-1]
-            if isinstance(TempRSI, (pd.Series, pd.DataFrame)):
-                raise TypeError(f"For {TickerSymbol}, RSI value from iloc[-1] is unexpectedly a Series/DataFrame: {TempRSI} (Type: {type(TempRSI)})")
-            LatestRSI = TempRSI if pd.notna(TempRSI) else 0
+            RawLatestRSI = StockDf['RSI'].iloc[-1]
+            ScalarRSI = np.nan
+            if isinstance(RawLatestRSI, pd.Series):
+                if len(RawLatestRSI) == 1: ScalarRSI = RawLatestRSI.item()
+                else: raise ValueError(f"For {TickerSymbol}, 'RSI' column's last value is a multi-item Series: {RawLatestRSI}. Cannot process.")
+            elif isinstance(RawLatestRSI, pd.DataFrame): raise ValueError(f"For {TickerSymbol}, 'RSI' column's last value is a DataFrame: {RawLatestRSI}. Cannot process.")
+            else: ScalarRSI = RawLatestRSI
+            LatestRSI = ScalarRSI if pd.notna(ScalarRSI) else 0
 
             # MACD
-            TempMACD = StockDf['MACD'].iloc[-1]
-            if isinstance(TempMACD, (pd.Series, pd.DataFrame)):
-                raise TypeError(f"For {TickerSymbol}, MACD value from iloc[-1] is unexpectedly a Series/DataFrame: {TempMACD} (Type: {type(TempMACD)})")
-            LatestMACD = TempMACD if pd.notna(TempMACD) else 0
+            RawLatestMACD = StockDf['MACD'].iloc[-1]
+            ScalarMACD = np.nan
+            if isinstance(RawLatestMACD, pd.Series):
+                if len(RawLatestMACD) == 1: ScalarMACD = RawLatestMACD.item()
+                else: raise ValueError(f"For {TickerSymbol}, 'MACD' column's last value is a multi-item Series: {RawLatestMACD}. Cannot process.")
+            elif isinstance(RawLatestMACD, pd.DataFrame): raise ValueError(f"For {TickerSymbol}, 'MACD' column's last value is a DataFrame: {RawLatestMACD}. Cannot process.")
+            else: ScalarMACD = RawLatestMACD
+            LatestMACD = ScalarMACD if pd.notna(ScalarMACD) else 0
 
             # SignalLine
-            TempSignalLine = StockDf['SignalLine'].iloc[-1]
-            if isinstance(TempSignalLine, (pd.Series, pd.DataFrame)):
-                raise TypeError(f"For {TickerSymbol}, SignalLine value from iloc[-1] is unexpectedly a Series/DataFrame: {TempSignalLine} (Type: {type(TempSignalLine)})")
-            LatestSignalLine = TempSignalLine if pd.notna(TempSignalLine) else 0
+            RawLatestSignalLine = StockDf['SignalLine'].iloc[-1]
+            ScalarSignalLine = np.nan
+            if isinstance(RawLatestSignalLine, pd.Series):
+                if len(RawLatestSignalLine) == 1: ScalarSignalLine = RawLatestSignalLine.item()
+                else: raise ValueError(f"For {TickerSymbol}, 'SignalLine' column's last value is a multi-item Series: {RawLatestSignalLine}. Cannot process.")
+            elif isinstance(RawLatestSignalLine, pd.DataFrame): raise ValueError(f"For {TickerSymbol}, 'SignalLine' column's last value is a DataFrame: {RawLatestSignalLine}. Cannot process.")
+            else: ScalarSignalLine = RawLatestSignalLine
+            LatestSignalLine = ScalarSignalLine if pd.notna(ScalarSignalLine) else 0
 
             # Close
-            LatestClose = StockDf['Close'].iloc[-1]
-            if isinstance(LatestClose, (pd.Series, pd.DataFrame)): # Should already be scalar from yf, but good check
-                raise TypeError(f"For {TickerSymbol}, Close value from iloc[-1] is unexpectedly a Series/DataFrame: {LatestClose} (Type: {type(LatestClose)})")
+            RawLatestClose = StockDf['Close'].iloc[-1]
+            ScalarClose = np.nan # Default to NaN before assignment
+
+            if isinstance(RawLatestClose, pd.Series):
+                if len(RawLatestClose) == 1:
+                    ScalarClose = RawLatestClose.item()
+                else:
+                    # This error will be caught by the outer try-except and logged by RankAssets
+                    raise ValueError(f"For {TickerSymbol}, 'Close' column's last value is a multi-item Series: {RawLatestClose}. Cannot process.")
+            elif isinstance(RawLatestClose, pd.DataFrame):
+                # This error will be caught by the outer try-except and logged by RankAssets
+                raise ValueError(f"For {TickerSymbol}, 'Close' column's last value is a DataFrame: {RawLatestClose}. Cannot process.")
+            else: # Assumed scalar
+                ScalarClose = RawLatestClose
+
+            LatestClose = ScalarClose if pd.notna(ScalarClose) else 0
 
             # Common function for MA and MiddleBand extraction
-            def get_latest_indicator_value(column_name, default_value):
+            def get_latest_indicator_value(column_name, default_value_for_nan):
                 if column_name in StockDf.columns:
-                    temp_val = StockDf[column_name].iloc[-1]
-                    if isinstance(temp_val, (pd.Series, pd.DataFrame)):
-                        raise TypeError(f"For {TickerSymbol}, {column_name} value from iloc[-1] is unexpectedly a Series/DataFrame: {temp_val} (Type: {type(temp_val)})")
-                    return temp_val if pd.notna(temp_val) else default_value
-                return default_value
+                    RawValue = StockDf[column_name].iloc[-1]
+                    ScalarValue = np.nan
+                    if isinstance(RawValue, pd.Series):
+                        if len(RawValue) == 1: ScalarValue = RawValue.item()
+                        else: raise ValueError(f"For {TickerSymbol}, '{column_name}' column's last value is a multi-item Series: {RawValue}. Cannot process.")
+                    elif isinstance(RawValue, pd.DataFrame): raise ValueError(f"For {TickerSymbol}, '{column_name}' column's last value is a DataFrame: {RawValue}. Cannot process.")
+                    else: ScalarValue = RawValue # Assumed scalar
+
+                    return ScalarValue if pd.notna(ScalarValue) else default_value_for_nan
+                return default_value_for_nan # If column doesn't exist, return the NaN default
 
             LatestSMA20 = get_latest_indicator_value('SMA_20', LatestClose)
             LatestSMA50 = get_latest_indicator_value('SMA_50', LatestClose)
@@ -173,10 +203,14 @@ def RankAssets(StockDataDict: dict[str, pd.DataFrame]) -> pd.DataFrame:
             LatestMiddleBand = get_latest_indicator_value('MiddleBand', LatestClose)
 
             # Momentum
-            TempMomentum = StockDf['Momentum'].iloc[-1]
-            if isinstance(TempMomentum, (pd.Series, pd.DataFrame)):
-                raise TypeError(f"For {TickerSymbol}, Momentum value from iloc[-1] is unexpectedly a Series/DataFrame: {TempMomentum} (Type: {type(TempMomentum)})")
-            LatestMomentum = TempMomentum if pd.notna(TempMomentum) else 0
+            RawLatestMomentum = StockDf['Momentum'].iloc[-1]
+            ScalarMomentum = np.nan
+            if isinstance(RawLatestMomentum, pd.Series):
+                if len(RawLatestMomentum) == 1: ScalarMomentum = RawLatestMomentum.item()
+                else: raise ValueError(f"For {TickerSymbol}, 'Momentum' column's last value is a multi-item Series: {RawLatestMomentum}. Cannot process.")
+            elif isinstance(RawLatestMomentum, pd.DataFrame): raise ValueError(f"For {TickerSymbol}, 'Momentum' column's last value is a DataFrame: {RawLatestMomentum}. Cannot process.")
+            else: ScalarMomentum = RawLatestMomentum
+            LatestMomentum = ScalarMomentum if pd.notna(ScalarMomentum) else 0
 
             CompositeScore = 0
 
