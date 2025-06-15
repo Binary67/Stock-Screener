@@ -4,6 +4,7 @@ from LoggingManager import LoggingManager
 from PerformanceMetric import PerformanceMetric
 from PerformanceRanking import PerformanceRanking
 from AssetAllocation import AssetAllocation
+from BacktestEngine import BacktestEngine
 import logging
 
 if __name__ == "__main__":
@@ -32,3 +33,8 @@ if __name__ == "__main__":
 
     Allocation = AssetAllocation(Ranking, Manager).GenerateAllocations()
     logging.getLogger(__name__).info("\n%s", Allocation)
+
+    Engine = BacktestEngine(Allocation)
+    WeightedStats, EqualStats = Engine.RunBacktest()
+    logging.getLogger(__name__).info("Weighted Allocation Stats:\n%s", WeightedStats)
+    logging.getLogger(__name__).info("Equal Allocation Stats:\n%s", EqualStats)
