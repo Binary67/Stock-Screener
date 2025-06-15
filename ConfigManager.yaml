@@ -32,5 +32,5 @@ CompositeMetrics:
   - "MaxDrawdown"
   - "SharpeRatio"
 
-TopN: 10
-Alpha: 0.5
+TopN: 50
+Alpha: 0.4
