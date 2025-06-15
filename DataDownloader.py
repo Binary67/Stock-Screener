@@ -16,10 +16,20 @@ class YFinanceDownloader:
             "Initialized YFinanceDownloader for %s", self.Ticker
         )
 
+    def _GetCacheFileBase(self):
+        StartStr = self.StartDate.strftime("%Y%m%d")
+        EndStr = self.EndDate.strftime("%Y%m%d")
+        FileBase = f"{self.Ticker}_{StartStr}_{EndStr}_{self.Interval}"
+        return FileBase
+
     def _GetCachePaths(self):
-        CsvFilePath = os.path.join(self.CacheDir, f"{self.Ticker}.csv")
-        MetaFilePath = os.path.join(self.CacheDir, f"{self.Ticker}_meta.json")
+        FileBase = self._GetCacheFileBase()
+        CsvFilePath = os.path.join(self.CacheDir, f"{FileBase}.csv")
+        MetaFilePath = os.path.join(self.CacheDir, f"{FileBase}_meta.json")
         return CsvFilePath, MetaFilePath
+
+    def GetCachePaths(self):
+        return self._GetCachePaths()
 
     def _LoadFromCache(self, CsvFilePath, MetaFilePath):
         if os.path.exists(CsvFilePath) and os.path.exists(MetaFilePath):

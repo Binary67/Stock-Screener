@@ -16,8 +16,9 @@ def test_cache_usage(tmp_path):
         Downloader = YFinanceDownloader("AAPL", "2022-01-01", "2022-01-03", "1d", CacheDir=str(CachePath))
         Data1 = Downloader.DownloadData()
         assert MockDownload.call_count == 1
-        CsvFile = CachePath / "AAPL.csv"
-        MetaFile = CachePath / "AAPL_meta.json"
+        FileBase = "AAPL_20220101_20220103_1d"
+        CsvFile = CachePath / f"{FileBase}.csv"
+        MetaFile = CachePath / f"{FileBase}_meta.json"
         assert CsvFile.exists() and MetaFile.exists()
         Expected = TestDf.copy()
         Expected["Ticker"] = "AAPL"
@@ -36,7 +37,8 @@ def test_cache_usage(tmp_path):
         Downloader = YFinanceDownloader("AAPL", "2022-01-01", "2022-01-03", "1h", CacheDir=str(CachePath))
         Data3 = Downloader.DownloadData()
         assert MockDownload.call_count == 1
-        with open(CachePath / "AAPL_meta.json") as MetaFile:
+        FileBaseNew = "AAPL_20220101_20220103_1h"
+        with open(CachePath / f"{FileBaseNew}_meta.json") as MetaFile:
             Meta = json.load(MetaFile)
         assert Meta["Interval"] == "1h"
         Expected = NewDf.copy()
@@ -61,3 +63,27 @@ def test_multi_ticker_download(tmp_path):
         ExpectedB["Ticker"] = "MSFT"
         Expected = pd.concat([ExpectedA, ExpectedB])
         assert Result.equals(Expected)
+
+
+def test_separate_date_range_cache(tmp_path):
+    CachePath = tmp_path / "Cache"
+    CachePath.mkdir()
+
+    TrainDf = pd.DataFrame({"Close": [1]}, index=pd.date_range("2022-01-01", periods=1))
+    ValidDf = pd.DataFrame({"Close": [2]}, index=pd.date_range("2023-01-01", periods=1))
+
+    with patch("DataDownloader.yf.download", side_effect=[TrainDf, ValidDf]) as MockDownload:
+        DownloaderTrain = YFinanceDownloader("AAPL", "2022-01-01", "2022-01-02", "1d", CacheDir=str(CachePath))
+        DataTrain = DownloaderTrain.DownloadData()
+        DownloaderValid = YFinanceDownloader("AAPL", "2023-01-01", "2023-01-02", "1d", CacheDir=str(CachePath))
+        DataValid = DownloaderValid.DownloadData()
+
+        assert MockDownload.call_count == 2
+
+        TrainFile = CachePath / "AAPL_20220101_20220102_1d.csv"
+        ValidFile = CachePath / "AAPL_20230101_20230102_1d.csv"
+
+        assert TrainFile.exists() and ValidFile.exists()
+
+        assert DataTrain.iloc[0]['Close'] == 1
+        assert DataValid.iloc[0]['Close'] == 2
