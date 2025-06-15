@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 import yfinance as yf
 import pandas as pd
 
@@ -11,6 +12,9 @@ class YFinanceDownloader:
         self.Interval = Interval
         self.CacheDir = CacheDir
         os.makedirs(self.CacheDir, exist_ok=True)
+        logging.getLogger(__name__).info(
+            "Initialized YFinanceDownloader for %s", self.Ticker
+        )
 
     def _GetCachePaths(self):
         CsvFilePath = os.path.join(self.CacheDir, f"{self.Ticker}.csv")
@@ -26,6 +30,7 @@ class YFinanceDownloader:
                 and Meta.get("EndDate") == self.EndDate.strftime("%Y-%m-%d")
                 and Meta.get("Interval") == self.Interval
             ):
+                logging.getLogger(__name__).info("Loading data for %s from cache", self.Ticker)
                 return pd.read_csv(CsvFilePath, index_col=0, parse_dates=True)
         return None
 
@@ -38,11 +43,13 @@ class YFinanceDownloader:
         }
         with open(MetaFilePath, "w") as File:
             json.dump(Meta, File)
+        logging.getLogger(__name__).info("Saved data for %s to cache", self.Ticker)
 
     def DownloadData(self):
         CsvFilePath, MetaFilePath = self._GetCachePaths()
         CachedDf = self._LoadFromCache(CsvFilePath, MetaFilePath)
         if CachedDf is not None:
+            logging.getLogger(__name__).info("Data for %s loaded from cache", self.Ticker)
             return CachedDf
 
         # For hourly data, yfinance limits the period that can be downloaded.
@@ -76,6 +83,7 @@ class YFinanceDownloader:
                 if DataFrames:
                     FinalDf = pd.concat(DataFrames)
                     self._SaveToCache(FinalDf, CsvFilePath, MetaFilePath)
+                    logging.getLogger(__name__).info("Downloaded data for %s in segments", self.Ticker)
                     return FinalDf
                 
         # For non-hourly data or periods within the 2-week limit, download directly.
@@ -92,5 +100,6 @@ class YFinanceDownloader:
 
         FinalDf.columns.name = None
         self._SaveToCache(FinalDf, CsvFilePath, MetaFilePath)
+        logging.getLogger(__name__).info("Downloaded data for %s", self.Ticker)
 
         return FinalDf
