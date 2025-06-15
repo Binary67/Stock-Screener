@@ -24,3 +24,18 @@ class PerformanceRanking:
             )
         RankingDf.index.name = self.MetricsDataFrame.index.name
         return RankingDf
+
+    def GenerateCompositeRanking(self, MetricsList):
+        RankingDf = self.GenerateRanking()
+        if not MetricsList:
+            raise ValueError("MetricsList cannot be empty")
+        for Metric in MetricsList:
+            if Metric not in RankingDf.columns:
+                raise ValueError(f"Metric {Metric} not found in ranking data")
+        Product = RankingDf[MetricsList].prod(axis=1)
+        Root = len(MetricsList)
+        CompositeScore = Product ** (1 / Root)
+        RankingDf["CompositeRank"] = (
+            CompositeScore.rank(ascending=True, method="min").astype(int)
+        )
+        return RankingDf

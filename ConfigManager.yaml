@@ -26,4 +26,9 @@ Tickers:
   - "TLX"
   - "WRD"
   - "CPAY"
+CompositeMetrics:
+  - "CAGR"
+  - "Volatility"
+  - "MaxDrawdown"
+  - "SharpeRatio"
 
