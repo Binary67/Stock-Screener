@@ -1,5 +1,7 @@
 import os
+import sys
 import yaml
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from ConfigManager import ConfigManager
 
 def test_config_loading(tmp_path):

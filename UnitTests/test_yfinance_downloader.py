@@ -1,7 +1,9 @@
 import os
+import sys
 import json
 import pandas as pd
 from unittest.mock import patch
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from DataDownloader import YFinanceDownloader
 
 
