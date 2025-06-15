@@ -27,7 +27,7 @@ class BacktestEngine:
         Data = Data.reset_index().rename(columns={Data.index.name or 'index': 'Date'})
         PriceDf = Data.pivot(index='Date', columns='Ticker', values='Close')
         PriceDf.sort_index(inplace=True)
-        PriceDf.fillna(method='ffill', inplace=True)
+        PriceDf.ffill(inplace=True)
         PriceDf.dropna(inplace=True)
         Normalized = PriceDf / PriceDf.iloc[0]
         Portfolio = (Normalized * Weights).sum(axis=1)
