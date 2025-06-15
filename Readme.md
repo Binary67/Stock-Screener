@@ -19,4 +19,3 @@ This project aims to rank and allocate investments among a list of ticker symbol
 
 - Integrate additional performance metrics (e.g., fundamental analysis).
 - Expand the backtesting engine for more complex strategies.
-
