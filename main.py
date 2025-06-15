@@ -2,6 +2,7 @@ from DataDownloader import YFinanceDownloader
 from ConfigManager import ConfigManager
 from LoggingManager import LoggingManager
 from PerformanceMetric import PerformanceMetric
+from PerformanceRanking import PerformanceRanking
 import logging
 
 if __name__ == "__main__":
@@ -20,3 +21,6 @@ if __name__ == "__main__":
 
     Metrics = PerformanceMetric(Data).GenerateMetrics()
     logging.getLogger(__name__).info("\n%s", Metrics)
+
+    Ranking = PerformanceRanking(Metrics).GenerateRanking()
+    logging.getLogger(__name__).info("\n%s", Ranking)

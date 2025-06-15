@@ -1,5 +1,8 @@
+import os
+import sys
 import pandas as pd
 import numpy as np
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from PerformanceMetric import PerformanceMetric
 
 
