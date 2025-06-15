@@ -1,6 +1,7 @@
 from DataDownloader import YFinanceDownloader
 from ConfigManager import ConfigManager
 from LoggingManager import LoggingManager
+from PerformanceMetric import PerformanceMetric
 import logging
 
 if __name__ == "__main__":
@@ -16,3 +17,6 @@ if __name__ == "__main__":
     Tickers = Manager.GetParameter("Tickers")
     Data = Downloader.DownloadData(Tickers)
     logging.getLogger(__name__).info("Data downloaded: %d rows", len(Data))
+
+    Metrics = PerformanceMetric(Data).GenerateMetrics()
+    logging.getLogger(__name__).info("\n%s", Metrics)
