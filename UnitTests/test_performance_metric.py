@@ -25,12 +25,14 @@ def test_generate_metrics():
     MaxDd = Drawdown.min()
     Excess = Returns - 0 / 252
     Sharpe = Excess.mean() / Returns.std() * np.sqrt(252)
+    Sortino = Excess.mean() / Returns[Returns < 0].std() * np.sqrt(252)
 
     Expected = pd.DataFrame({
         'CAGR': [Cagr],
         'Volatility': [Vol],
         'MaxDrawdown': [MaxDd],
-        'SharpeRatio': [Sharpe]
+        'SharpeRatio': [Sharpe],
+        'SortinoRatio': [Sortino]
     }, index=pd.Index(['AAPL'], name='Ticker'))
 
     pd.testing.assert_frame_equal(Metrics, Expected)

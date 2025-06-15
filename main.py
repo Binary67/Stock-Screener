@@ -28,7 +28,7 @@ if __name__ == "__main__":
 
     CompositeMetrics = Manager.GetParameter(
         "CompositeMetrics",
-        ["CAGR", "Volatility", "MaxDrawdown", "SharpeRatio"],
+        ["CAGR", "Volatility", "MaxDrawdown", "SharpeRatio", "SortinoRatio"],
     )
     Ranking = PerformanceRanking(Metrics).GenerateCompositeRanking(CompositeMetrics)
     logging.getLogger(__name__).info("\n%s", Ranking)

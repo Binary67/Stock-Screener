@@ -51,16 +51,28 @@ class PerformanceMetric:
             Results[Ticker] = Sharpe
         return pd.Series(Results)
 
+    def CalculateSortinoRatio(self, RiskFreeRate=0.0):
+        Results = {}
+        for Ticker, Group in self._GroupByTicker():
+            Returns = self._CalculateDailyReturns(Group['Close'])
+            Excess = Returns - RiskFreeRate / 252
+            DownsideStd = Returns[Returns < 0].std()
+            Sortino = Excess.mean() / DownsideStd * np.sqrt(252)
+            Results[Ticker] = Sortino
+        return pd.Series(Results)
+
     def GenerateMetrics(self):
         Cagr = self.CalculateCompoundAnnualGrowthRate()
         Vol = self.CalculateVolatility()
         Mdd = self.CalculateMaxDrawdown()
         Sharpe = self.CalculateSharpeRatio()
+        Sortino = self.CalculateSortinoRatio()
         MetricsDf = pd.concat([
             Cagr.rename('CAGR'),
             Vol.rename('Volatility'),
             Mdd.rename('MaxDrawdown'),
-            Sharpe.rename('SharpeRatio')
+            Sharpe.rename('SharpeRatio'),
+            Sortino.rename('SortinoRatio')
         ], axis=1)
         MetricsDf.index.name = 'Ticker'
         return MetricsDf

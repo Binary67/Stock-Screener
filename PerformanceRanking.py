@@ -9,7 +9,8 @@ class PerformanceRanking:
             "CAGR": False,
             "Volatility": True,
             "MaxDrawdown": False,
-            "SharpeRatio": False
+            "SharpeRatio": False,
+            "SortinoRatio": False
         }
 
     def GenerateRanking(self):
