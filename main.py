@@ -13,4 +13,6 @@ if __name__ == "__main__":
         Manager.GetParameter("Interval"),
         CacheDir=Manager.GetParameter("CacheDir")
     )
-    Data = Downloader.DownloadData()
+    Tickers = Manager.GetParameter("Tickers")
+    Data = Downloader.DownloadData(Tickers)
+    logging.getLogger(__name__).info("Data downloaded: %d rows", len(Data))

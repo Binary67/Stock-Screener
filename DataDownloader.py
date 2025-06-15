@@ -45,7 +45,7 @@ class YFinanceDownloader:
             json.dump(Meta, File)
         logging.getLogger(__name__).info("Saved data for %s to cache", self.Ticker)
 
-    def DownloadData(self):
+    def _DownloadSingleTicker(self):
         CsvFilePath, MetaFilePath = self._GetCachePaths()
         CachedDf = self._LoadFromCache(CsvFilePath, MetaFilePath)
         if CachedDf is not None:
@@ -103,3 +103,25 @@ class YFinanceDownloader:
         logging.getLogger(__name__).info("Downloaded data for %s", self.Ticker)
 
         return FinalDf
+
+    def DownloadData(self, Tickers=None):
+        if Tickers is None:
+            DataFrame = self._DownloadSingleTicker()
+            DataFrame["Ticker"] = self.Ticker
+            return DataFrame
+
+        if isinstance(Tickers, str):
+            TickerList = [Tickers]
+        else:
+            TickerList = list(Tickers)
+
+        CombinedFrames = []
+        OriginalTicker = self.Ticker
+        for SingleTicker in TickerList:
+            self.Ticker = SingleTicker
+            TempDf = self._DownloadSingleTicker()
+            TempDf["Ticker"] = SingleTicker
+            CombinedFrames.append(TempDf)
+        self.Ticker = OriginalTicker
+
+        return pd.concat(CombinedFrames) if CombinedFrames else pd.DataFrame()
