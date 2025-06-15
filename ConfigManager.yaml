@@ -31,6 +31,7 @@ CompositeMetrics:
   - "Volatility"
   - "MaxDrawdown"
   - "SharpeRatio"
+  - "SortinoRatio"
 
 TopN: 50
 Alpha: 0.4
