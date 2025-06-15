@@ -1,0 +1,5 @@
+Ticker: "AAPL"
+StartDate: "2022-01-01"
+EndDate: "2022-01-10"
+Interval: "1d"
+CacheDir: "Cache"
