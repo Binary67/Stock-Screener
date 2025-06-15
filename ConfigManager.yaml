@@ -3,3 +3,6 @@ StartDate: "2020-01-01"
 EndDate: "2024-12-31"
 Interval: "1d"
 CacheDir: "Cache"
+Tickers:
+  - "AAPL"
+  - "MSFT"
