@@ -14,6 +14,8 @@ import DataDownloader
 import EvaluationMetrics
 import Config
 import AssetRanking
+import AssetAllocation
+import StrategyBacktest
 import os
 
 os.chdir('/home/user/stock-screener/')
@@ -80,8 +82,22 @@ if __name__ == "__main__":
 
         try:
             RankingFrame = AssetRanking.RankAssets(MetricsSummary=MetricsSummary)
-            print("\nAsset Ranking:")
-            print(RankingFrame.to_string(index=False))
             RankingFrame.to_csv('Outputs/RankingFrame.csv', index = False)
         except Exception as Error:
             print(f"Failed to rank assets: {Error}")
+        else:
+            try:
+                AllocationFrame = AssetAllocation.AllocateAssets(
+                    RankingFrame=RankingFrame,
+                    PriceDataByTicker=Results,
+                    LookbackPeriods=60,
+                )
+                AllocationFrame.to_csv('Outputs/AssetAllocation.csv', index=False)
+            except Exception as Error:
+                print(f"Failed to allocate assets: {Error}")
+            else:
+                # Run SMA crossover backtests per allocation and print metrics
+                try:
+                    StrategyBacktest.RunSmaCrossoverBacktest(AllocationFrame=AllocationFrame)
+                except Exception as Error:
+                    print(f"Failed to run backtests: {Error}")

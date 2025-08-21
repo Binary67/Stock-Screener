@@ -20,6 +20,11 @@ StartDate: "2023-01-01"
 EndDate: "2024-12-31"
 Interval: "1d"
 
+# Allocation filtering
+# TopN is a fraction (0.0–1.0). Example: 0.2 keeps the top 20% tickers by ranking.
+# Backward compatible: values >1 and <=100 are treated as percent (e.g., 20 -> 0.2).
+TopN: 0.5
+
 # Ranking weights for AssetRanking module (higher is better for all listed metrics)
 RankingWeights:
   SortinoRatio: 0.15
@@ -27,3 +32,10 @@ RankingWeights:
   NegMaxDrawdown: 0.15
   CAGR: 0.35
   UlcerPerformanceIndex: 0.10
+
+# Allocation blend between ranking and volatility
+# You can also set `RankingWeight: 0.7` instead; if both values are provided,
+# they are normalized so the relative shares drive the blend.
+AllocationWeights:
+  Ranking: 0.7
+  Volatility: 0.3
