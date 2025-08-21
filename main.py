@@ -11,6 +11,7 @@ from typing import Dict, Sequence, Union
 import pandas as pd
 
 import DataDownloader
+import EvaluationMetrics
 import Config
 
 
@@ -57,6 +58,20 @@ if __name__ == "__main__":
     Interval = str(AppConfig.get("Interval", "1d"))
 
     Results = RunPipeline(TickerSymbols, StartDate, EndDate, Interval)
+
+    # Evaluate metrics per ticker using the new EvaluationMetrics module.
+    MetricsFrames = []
     for TickerSymbol, DataFrame in Results.items():
-        print(f"{TickerSymbol}: {len(DataFrame)} rows; Columns: {list(DataFrame.columns)}")
-        print(f"{TickerSymbol}: {DataFrame.head()}")
+        try:
+            MetricFrame = EvaluationMetrics.EvaluateSingleTicker(
+                TickerSymbol=TickerSymbol,
+                TradingData=DataFrame,
+            )
+            MetricsFrames.append(MetricFrame)
+        except Exception as Error:
+            print(f"Failed to evaluate metrics for {TickerSymbol}: {Error}")
+
+    if MetricsFrames:
+        MetricsSummary = pd.concat(MetricsFrames, ignore_index=True)
+        print("\nEvaluation Metrics Summary:")
+        print(MetricsSummary.to_string(index=False))
