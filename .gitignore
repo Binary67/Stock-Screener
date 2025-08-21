@@ -1,2 +1,5 @@
 .venv
 .idx
+Caches
+__pycache__
+*.pyc
