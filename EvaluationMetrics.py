@@ -3,7 +3,7 @@
 Design goals:
 - Accept a single trading DataFrame for one ticker and compute metrics.
 - Start with Sortino Ratio and keep the API flexible to add more metrics later.
-- Adds Sharpe Ratio and Max Drawdown metrics.
+- Adds Sharpe Ratio and NegMaxDrawdown (inverted Max Drawdown) metrics.
 - Follow AGENTS Coding Contract: PascalCase for newly declared variables, keep logic
   inside modules, and allow `main.py` to orchestrate.
 """
@@ -150,6 +150,159 @@ def ComputeMaxDrawdown(Returns: pd.Series) -> float:
     return float(Drawdown.min())
 
 
+def ComputeNegMaxDrawdown(Returns: pd.Series) -> float:
+    """Compute the negated Max Drawdown so higher is better.
+
+    Notes
+    -----
+    - If Max Drawdown is -0.35 (i.e., -35%), this returns +0.35.
+    - Returns NaN when Max Drawdown is not computable.
+    """
+    MaxDd = ComputeMaxDrawdown(Returns=Returns)
+    try:
+        return -float(MaxDd)
+    except Exception:
+        return float("nan")
+
+
+def ComputeUlcerIndex(Returns: pd.Series) -> float:
+    """Compute the Ulcer Index from a series of returns.
+
+    Method
+    ------
+    - Form equity curve: `Equity = (1 + Returns).cumprod()`
+    - Compute drawdowns as decimals: `DD = Equity / cummax(Equity) - 1`
+    - Ulcer Index is `sqrt(mean(DD^2))`
+
+    Notes
+    -----
+    - Drawdowns are treated as decimals (e.g., -0.35 for -35%). Some references
+      use percentage points; this implementation uses decimals for consistency
+      with other metrics in this module.
+    - Returns NaN if not computable.
+    """
+    if Returns is None or len(Returns) == 0:
+        return float("nan")
+
+    EquityCurve = (1.0 + Returns).cumprod()
+    RollingPeak = EquityCurve.cummax()
+    Drawdown = (EquityCurve / RollingPeak) - 1.0
+
+    Squared = np.square(Drawdown.astype(float))
+    MeanSquared = float(np.mean(Squared))
+    if not np.isfinite(MeanSquared):
+        return float("nan")
+    try:
+        return float(np.sqrt(MeanSquared))
+    except Exception:
+        return float("nan")
+
+
+def ComputeUlcerPerformanceIndex(
+    Returns: pd.Series,
+    RiskFreeRate: float = 0.0,
+    PeriodsPerYear: Optional[int] = None,
+) -> float:
+    """Compute the Ulcer Performance Index (aka Martin Ratio).
+
+    Definition
+    ----------
+    UPI = ExcessReturn / UlcerIndex
+
+    where `ExcessReturn` is the mean return minus risk-free rate, optionally
+    annualized if `PeriodsPerYear` is provided. `UlcerIndex` is computed from
+    the provided returns (not annualized).
+
+    Parameters
+    ----------
+    Returns: pd.Series
+        Periodic returns (e.g., daily). Should be in decimal form.
+    RiskFreeRate: float
+        Risk-free rate per period. Default 0.0.
+    PeriodsPerYear: int | None
+        If provided, annualizes the numerator using this factor.
+
+    Returns
+    -------
+    float
+        The Ulcer Performance Index. Returns NaN if not computable, or +inf when
+        Ulcer Index is zero (no drawdowns).
+    """
+    if Returns is None or len(Returns) == 0:
+        return float("nan")
+
+    Ulcer = ComputeUlcerIndex(Returns=Returns)
+    if not np.isfinite(Ulcer):
+        return float("nan")
+    if Ulcer == 0.0:
+        return float("inf")
+
+    Excess = Returns - RiskFreeRate
+    MeanExcess = float(Excess.mean())
+    if PeriodsPerYear is not None and PeriodsPerYear > 0:
+        MeanExcess = MeanExcess * PeriodsPerYear
+
+    return MeanExcess / Ulcer
+
+
+def ComputeCAGR(
+    Returns: pd.Series,
+    PeriodsPerYear: Optional[int] = None,
+) -> float:
+    """Compute the Compound Annual Growth Rate (CAGR).
+
+    CAGR is computed from the compounded growth over the entire period and
+    annualized by the number of years elapsed. If `PeriodsPerYear` is provided,
+    years are estimated as `len(Returns) / PeriodsPerYear`. Otherwise, attempts
+    to infer years from a datetime-like index on `Returns`.
+
+    Returns NaN if not computable. If compounded growth reaches zero (i.e.,
+    a -100% return occurs), returns -1.0.
+    """
+    if Returns is None or len(Returns) == 0:
+        return float("nan")
+
+    OnePlus = 1.0 + Returns
+    if (OnePlus <= 0).any():
+        # Reached zero (or invalid negative equity). Treat zero equity as -100% CAGR.
+        if (OnePlus == 0).any():
+            return -1.0
+        return float("nan")
+
+    TotalGrowth = float(OnePlus.prod())
+
+    Years: Optional[float] = None
+    if PeriodsPerYear is not None and PeriodsPerYear > 0:
+        Years = float(len(Returns)) / float(PeriodsPerYear)
+    else:
+        Index = Returns.index
+        try:
+            # Use pandas Timedelta to compute precise fractional years
+            Start = Index[0]
+            End = Index[-1]
+            Duration = End - Start
+            # Support pandas Timedelta, datetime.timedelta, or numpy timedelta64
+            DurationSeconds = getattr(Duration, "total_seconds", lambda: None)()
+            if DurationSeconds is None:
+                # Fallback for numpy timedelta64
+                try:
+                    DurationSeconds = float(pd.to_timedelta(Duration).total_seconds())
+                except Exception:
+                    DurationSeconds = None
+            if DurationSeconds is not None and DurationSeconds > 0:
+                Years = DurationSeconds / (365.25 * 24 * 3600)
+        except Exception:
+            Years = None
+
+    if Years is None or Years <= 0:
+        return float("nan")
+
+    try:
+        return float(TotalGrowth ** (1.0 / Years) - 1.0)
+    except Exception:
+        return float("nan")
+
+
 def DefaultMetricsRegistry(
     TargetReturn: float = 0.0,
     PeriodsPerYear: Optional[int] = None,
@@ -173,13 +326,25 @@ def DefaultMetricsRegistry(
             Returns=Returns, RiskFreeRate=EffectiveRf, PeriodsPerYear=PeriodsPerYear
         )
 
-    def MaxDD(Returns: pd.Series, TradingData: pd.DataFrame) -> float:  # noqa: ARG001
-        return ComputeMaxDrawdown(Returns=Returns)
+    def NegMaxDD(Returns: pd.Series, TradingData: pd.DataFrame) -> float:  # noqa: ARG001
+        return ComputeNegMaxDrawdown(Returns=Returns)
+
+    def CAGR(Returns: pd.Series, TradingData: pd.DataFrame) -> float:  # noqa: ARG001
+        return ComputeCAGR(Returns=Returns, PeriodsPerYear=PeriodsPerYear)
+
+    def UlcerPerformanceIndex(Returns: pd.Series, TradingData: pd.DataFrame) -> float:  # noqa: ARG001
+        return ComputeUlcerPerformanceIndex(
+            Returns=Returns,
+            RiskFreeRate=EffectiveRf,
+            PeriodsPerYear=PeriodsPerYear,
+        )
 
     return {
         "SortinoRatio": Sortino,
         "SharpeRatio": Sharpe,
-        "MaxDrawdown": MaxDD,
+        "NegMaxDrawdown": NegMaxDD,
+        "CAGR": CAGR,
+        "UlcerPerformanceIndex": UlcerPerformanceIndex,
     }
 
 
@@ -215,7 +380,8 @@ def EvaluateSingleTicker(
     -------
     pd.DataFrame
         DataFrame with columns including: `TickerSymbol`, `SortinoRatio`,
-        `SharpeRatio`, and `MaxDrawdown` (and any future metrics added).
+        `SharpeRatio`, `NegMaxDrawdown`, `CAGR`, and `UlcerPerformanceIndex`
+        (plus any future metrics added).
     """
     PriceSeries = _select_price_series(TradingData, PriceColumnPriority)
     ReturnsSeries = _compute_returns(PriceSeries)
@@ -247,6 +413,10 @@ __all__ = [
     "ComputeSortinoRatio",
     "ComputeSharpeRatio",
     "ComputeMaxDrawdown",
+    "ComputeNegMaxDrawdown",
+    "ComputeUlcerIndex",
+    "ComputeUlcerPerformanceIndex",
+    "ComputeCAGR",
     "EvaluateSingleTicker",
     "DefaultMetricsRegistry",
 ]

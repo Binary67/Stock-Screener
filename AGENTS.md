@@ -30,3 +30,5 @@ This document defines the non-negotiable coding rules for this repository. It ex
   - Register the new step in the pipeline run order.
   - Ensure any required configuration is wired through `main.py`.
 - Keep `main.py` slim: It orchestrates; it should not contain business logic. Move logic into modules and call them from `main.py`.
+
+To run the python script, always use ".venv/bin/python3" to run the py file.

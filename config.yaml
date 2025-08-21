@@ -4,8 +4,18 @@
 
 # Download parameters
 TickerSymbols:
-  - "AAPL"
-  - "MSFT"
+  - NEGG
+  - LNZA
+  - SRRK
+  - STEM
+  - MCRB
+  - GDS
+  - JHX
+  - ALC
+  - OSCR
+  - VEON
+  - INTC
+  - SOUN
 StartDate: "2023-01-01"
-EndDate: "2023-12-31"
-Interval: "1d"  # e.g., 1d, 1h, 5m
+EndDate: "2024-12-31"
+Interval: "1d"
