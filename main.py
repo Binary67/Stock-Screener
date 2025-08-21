@@ -13,7 +13,10 @@ import pandas as pd
 import DataDownloader
 import EvaluationMetrics
 import Config
+import AssetRanking
+import os
 
+os.chdir('/home/user/stock-screener/')
 
 def RunPipeline(
     TickerSymbols: Sequence[str],
@@ -73,5 +76,12 @@ if __name__ == "__main__":
 
     if MetricsFrames:
         MetricsSummary = pd.concat(MetricsFrames, ignore_index=True)
-        print("\nEvaluation Metrics Summary:")
-        print(MetricsSummary.to_string(index=False))
+        MetricsSummary.to_csv('Outputs/MetricsSummary.csv', index = False)
+
+        try:
+            RankingFrame = AssetRanking.RankAssets(MetricsSummary=MetricsSummary)
+            print("\nAsset Ranking:")
+            print(RankingFrame.to_string(index=False))
+            RankingFrame.to_csv('Outputs/RankingFrame.csv', index = False)
+        except Exception as Error:
+            print(f"Failed to rank assets: {Error}")

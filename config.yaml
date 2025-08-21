@@ -19,3 +19,11 @@ TickerSymbols:
 StartDate: "2023-01-01"
 EndDate: "2024-12-31"
 Interval: "1d"
+
+# Ranking weights for AssetRanking module (higher is better for all listed metrics)
+RankingWeights:
+  SortinoRatio: 0.15
+  SharpeRatio: 0.25
+  NegMaxDrawdown: 0.15
+  CAGR: 0.35
+  UlcerPerformanceIndex: 0.10
