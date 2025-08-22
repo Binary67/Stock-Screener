@@ -39,3 +39,5 @@ RankingWeights:
 AllocationWeights:
   Ranking: 0.7
   Volatility: 0.3
+
+PlotColumn: TotalFinalEquity

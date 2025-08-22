@@ -6,7 +6,7 @@ to modules per the AGENTS Coding Contract.
 
 from __future__ import annotations
 
-from typing import Dict, Sequence, Union
+from typing import Dict, Sequence, Union, Optional
 
 import pandas as pd
 
@@ -17,6 +17,7 @@ import AssetRanking
 import AssetAllocation
 import StrategyBacktest
 import MonteCarloSimulation
+import ResultVisualization
 import os
 
 os.chdir('/home/user/stock-screener/')
@@ -43,6 +44,88 @@ def RunPipeline(
     return Results
 
 
+def ComputeMetricsSummary(
+    Results: Dict[str, pd.DataFrame],
+) -> Optional[pd.DataFrame]:
+    """Evaluate per-ticker metrics and return a concatenated summary frame.
+
+    Persists the summary to `Outputs/MetricsSummary.csv` when available.
+    Returns None when no metrics could be computed.
+    """
+    MetricsFrames = []
+    for TickerSymbol, DataFrame in Results.items():
+        try:
+            MetricFrame = EvaluationMetrics.EvaluateSingleTicker(
+                TickerSymbol=TickerSymbol,
+                TradingData=DataFrame,
+            )
+            MetricsFrames.append(MetricFrame)
+        except Exception as Error:
+            print(f"Failed to evaluate metrics for {TickerSymbol}: {Error}")
+
+    if not MetricsFrames:
+        print("No metrics computed; skipping ranking, allocation, and simulations.")
+        return None
+
+    MetricsSummary = pd.concat(MetricsFrames, ignore_index=True)
+    MetricsSummary.to_csv('Outputs/MetricsSummary.csv', index=False)
+    return MetricsSummary
+
+
+def ComputeRanking(MetricsSummary: pd.DataFrame) -> Optional[pd.DataFrame]:
+    """Rank assets from metrics and persist the ranking frame."""
+    try:
+        RankingFrame = AssetRanking.RankAssets(MetricsSummary=MetricsSummary)
+        RankingFrame.to_csv('Outputs/RankingFrame.csv', index=False)
+        return RankingFrame
+    except Exception as Error:
+        print(f"Failed to rank assets: {Error}")
+        return None
+
+
+def ComputeAllocation(
+    RankingFrame: pd.DataFrame,
+    PriceDataByTicker: Dict[str, pd.DataFrame],
+    LookbackPeriods: int = 60,
+) -> Optional[pd.DataFrame]:
+    """Allocate assets from ranking and price data and persist the allocation."""
+    try:
+        AllocationFrame = AssetAllocation.AllocateAssets(
+            RankingFrame=RankingFrame,
+            PriceDataByTicker=PriceDataByTicker,
+            LookbackPeriods=LookbackPeriods,
+        )
+        AllocationFrame.to_csv('Outputs/AssetAllocation.csv', index=False)
+        return AllocationFrame
+    except Exception as Error:
+        print(f"Failed to allocate assets: {Error}")
+        return None
+
+
+def RunBacktests(AllocationFrame: pd.DataFrame) -> None:
+    """Run SMA crossover backtests and persist summary if available."""
+    try:
+        BacktestSummary = StrategyBacktest.RunSmaCrossoverBacktest(AllocationFrame=AllocationFrame)
+        if isinstance(BacktestSummary, dict) and len(BacktestSummary) > 0:
+            pd.DataFrame([BacktestSummary]).to_csv('Outputs/BacktestSummary.csv', index=False)
+    except Exception as Error:
+        print(f"Failed to run backtests: {Error}")
+
+
+def RunMonteCarlo(RankingFrame: pd.DataFrame) -> None:
+    """Run Monte Carlo simulations and append results to the backtest summary file."""
+    try:
+        MonteCarloSimulation.RunMonteCarloRandomEqualWeight(
+            RankingFrame=RankingFrame,
+            SampleFraction=0.5,
+            Iterations=50,
+            OutputPath='Outputs/BacktestSummary.csv',
+            RandomSeed=None,
+        )
+    except Exception as Error:
+        print(f"Failed to run Monte Carlo simulation: {Error}")
+
+
 if __name__ == "__main__":
     # Drive parameters via YAML config for ad-hoc runs without embedding logic here.
     try:
@@ -65,54 +148,28 @@ if __name__ == "__main__":
 
     Results = RunPipeline(TickerSymbols, StartDate, EndDate, Interval)
 
-    # Evaluate metrics per ticker using the new EvaluationMetrics module.
-    MetricsFrames = []
-    for TickerSymbol, DataFrame in Results.items():
-        try:
-            MetricFrame = EvaluationMetrics.EvaluateSingleTicker(
-                TickerSymbol=TickerSymbol,
-                TradingData=DataFrame,
-            )
-            MetricsFrames.append(MetricFrame)
-        except Exception as Error:
-            print(f"Failed to evaluate metrics for {TickerSymbol}: {Error}")
+    # Evaluate metrics per ticker and persist summary
+    MetricsSummary = ComputeMetricsSummary(Results)
+    if MetricsSummary is None:
+        raise SystemExit(0)
 
-    if MetricsFrames:
-        MetricsSummary = pd.concat(MetricsFrames, ignore_index=True)
-        MetricsSummary.to_csv('Outputs/MetricsSummary.csv', index = False)
+    # Rank assets and persist ranking
+    RankingFrame = ComputeRanking(MetricsSummary)
+    if RankingFrame is None:
+        raise SystemExit(0)
 
-        try:
-            RankingFrame = AssetRanking.RankAssets(MetricsSummary=MetricsSummary)
-            RankingFrame.to_csv('Outputs/RankingFrame.csv', index = False)
-        except Exception as Error:
-            print(f"Failed to rank assets: {Error}")
-        else:
-            try:
-                AllocationFrame = AssetAllocation.AllocateAssets(
-                    RankingFrame=RankingFrame,
-                    PriceDataByTicker=Results,
-                    LookbackPeriods=60,
-                )
-                AllocationFrame.to_csv('Outputs/AssetAllocation.csv', index=False)
-            except Exception as Error:
-                print(f"Failed to allocate assets: {Error}")
-            else:
-                # Run SMA crossover backtests per allocation and capture combined metrics
-                try:
-                    BacktestSummary = StrategyBacktest.RunSmaCrossoverBacktest(AllocationFrame=AllocationFrame)
-                    if isinstance(BacktestSummary, dict) and len(BacktestSummary) > 0:
-                        pd.DataFrame([BacktestSummary]).to_csv('Outputs/BacktestSummary.csv', index=False)
-                except Exception as Error:
-                    print(f"Failed to run backtests: {Error}")
+    # Allocate assets and persist allocation
+    AllocationFrame = ComputeAllocation(RankingFrame, Results, LookbackPeriods=60)
+    if AllocationFrame is None:
+        raise SystemExit(0)
 
-                # Run Monte Carlo simulation: pick 50% of tickers equally weighted and append metrics
-                try:
-                    MonteCarloSimulation.RunMonteCarloRandomEqualWeight(
-                        RankingFrame=RankingFrame,
-                        SampleFraction=0.5,
-                        Iterations=50,
-                        OutputPath='Outputs/BacktestSummary.csv',
-                        RandomSeed=None,
-                    )
-                except Exception as Error:
-                    print(f"Failed to run Monte Carlo simulation: {Error}")
+    # Run backtests and Monte Carlo simulations
+    RunBacktests(AllocationFrame)
+    RunMonteCarlo(RankingFrame)
+
+    # Plot result visualization for a selected column from BacktestSummary.csv
+    try:
+        SelectedPlotColumn = str(AppConfig.get("PlotColumn", "TotalReturnPct"))
+        ResultVisualization.PlotBacktestColumn(ColumnName=SelectedPlotColumn)
+    except Exception as Error:
+        print(f"Failed to plot results: {Error}")
