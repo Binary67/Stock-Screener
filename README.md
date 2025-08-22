@@ -1,3 +1,5 @@
+## Stock Screener
+
 **Architecture Overview**
 - **Purpose:** End-to-end stock screening pipeline that downloads price data, computes risk/return metrics, ranks assets, allocates weights, backtests a simple strategy, runs Monte Carlo variants, and visualizes results.
 - **Orchestrator:** `main.py` coordinates modules; business logic resides in dedicated modules per the AGENTS Coding Contract.
