@@ -8,8 +8,9 @@ Behavior
 - Uses `backtesting.py` to run a simple long-only SMA crossover strategy for each
   ticker, with initial cash sized by `AllocationPercent` of a total InitialCapital
   (default 100_000 if not provided in config).
-- Prints the library-provided metrics for each ticker, and prints a portfolio
-  total equity (sum of each ticker’s final equity) at the end.
+- Returns combined (portfolio-level) metrics only; no per-ticker printing.
+  Combined metrics include total final equity, total return percent, averages
+  and allocation-weighted averages of Sharpe, Sortino, Max Drawdown, and more.
 
 Notes
 -----
@@ -29,13 +30,23 @@ import Config
 import DataDownloader
 
 
-def RunSmaCrossoverBacktest(AllocationFrame: pd.DataFrame) -> None:
-    """Run SMA crossover backtests for each allocated ticker and print metrics.
+def RunSmaCrossoverBacktest(AllocationFrame: pd.DataFrame) -> dict:
+    """Run SMA crossover backtests for each allocated ticker and return metrics.
 
     Parameters
     ----------
     AllocationFrame: pd.DataFrame
         Must contain columns `TickerSymbol` and `AllocationPercent`.
+
+    Returns
+    -------
+    dict
+        Mapping of combined portfolio-level metrics, including:
+        - `InitialCapital`, `TotalFinalEquity`, `TotalReturnPct`
+        - `AverageSharpeRatio`, `AverageSortinoRatio`, `AverageMaxDrawdown`
+        - `AverageWinRatePct`, `AverageProfitFactor`
+        - `WeightedSharpeRatio`, `WeightedSortinoRatio`, `WeightedMaxDrawdown`, `WeightedWinRatePct`
+        - `TotalTrades`, `NumTickers`, `StartDate`, `EndDate`, `Interval`
     """
 
     try:
@@ -45,12 +56,12 @@ def RunSmaCrossoverBacktest(AllocationFrame: pd.DataFrame) -> None:
         print(
             "backtesting.py is required. Install with: .venv/bin/python3 -m pip install backtesting"
         )
-        return
+        return {}
 
     # Validate allocation input
     if AllocationFrame is None or AllocationFrame.empty:
         print("AllocationFrame is empty; nothing to backtest.")
-        return
+        return {}
 
     RequiredCols = {"TickerSymbol", "AllocationPercent"}
     MissingCols = RequiredCols - set(AllocationFrame.columns)
@@ -78,7 +89,7 @@ def RunSmaCrossoverBacktest(AllocationFrame: pd.DataFrame) -> None:
     CleanFrame = CleanFrame[CleanFrame["AllocationPercent"] > 0.0]
     if CleanFrame.empty:
         print("No positive allocations; nothing to backtest.")
-        return
+        return {}
 
     # Simple SMA helper to avoid extra imports; compatible with backtesting.I
     def _sma(Series: pd.Series, Window: int) -> pd.Series:
@@ -105,7 +116,18 @@ def RunSmaCrossoverBacktest(AllocationFrame: pd.DataFrame) -> None:
                     self.position.close()
 
     TotalFinalEquity: float = 0.0
-    ResultsByTicker: list[tuple[str, pd.Series]] = []
+    ResultsByTicker: list[tuple[str, pd.Series, float]] = []  # (Ticker, Stats, Weight)
+
+    # Helpers to safely extract metrics from backtesting.py results
+    def _get_float(Stats: pd.Series, Keys: list[str]) -> float:
+        for Key in Keys:
+            try:
+                if Key in Stats:
+                    Value = float(Stats.get(Key))
+                    return Value
+            except Exception:
+                continue
+        return float("nan")
 
     for _, Row in CleanFrame.iterrows():
         TickerSymbol = str(Row["TickerSymbol"]).strip()
@@ -152,19 +174,12 @@ def RunSmaCrossoverBacktest(AllocationFrame: pd.DataFrame) -> None:
                 cash=AllocatedCash,
                 commission=0.001,
                 exclusive_orders=True,
+                finalize_trades=True
             )
             Stats = BacktestEngine.run()
         except Exception as Error:
             print(f"Backtest failed for {TickerSymbol}: {Error}")
             continue
-
-        # Print per-ticker stats emitted by backtesting.py
-        print("\n=== Backtest Metrics:", TickerSymbol, f"(Allocated ${AllocatedCash:,.2f}) ===")
-        try:
-            # Stats is typically a pandas Series
-            print(Stats.to_string())
-        except Exception:
-            print(Stats)
 
         # Accumulate total final equity across tickers
         try:
@@ -175,22 +190,117 @@ def RunSmaCrossoverBacktest(AllocationFrame: pd.DataFrame) -> None:
             pass
 
         try:
-            ResultsByTicker.append((TickerSymbol, Stats))  # type: ignore[arg-type]
+            ResultsByTicker.append(
+                (
+                    TickerSymbol,
+                    Stats,  # type: ignore[arg-type]
+                    float(AllocationPercent) / 100.0,  # weight in [0,1]
+                )
+            )
         except Exception:
             pass
 
-    # Portfolio-level summary (total equity)
-    print("\n=== Portfolio Summary ===")
-    print(f"Initial Capital: ${InitialCapital:,.2f}")
-    print(f"Total Final Equity (sum of buckets): ${TotalFinalEquity:,.2f}")
+    # Compute combined metrics (averages and weighted averages)
+    AverageSharpeRatio: float = float("nan")
+    AverageSortinoRatio: float = float("nan")
+    AverageMaxDrawdown: float = float("nan")  # percent, typically negative
+    AverageWinRatePct: float = float("nan")
+    AverageProfitFactor: float = float("nan")
+    TotalTrades: float = 0.0
+
+    WeightedSharpeRatio: float = float("nan")
+    WeightedSortinoRatio: float = float("nan")
+    WeightedMaxDrawdown: float = float("nan")
+    WeightedWinRatePct: float = float("nan")
+
+    if len(ResultsByTicker) > 0:
+        # Gather vectors
+        SharpeVals: list[float] = []
+        SortinoVals: list[float] = []
+        MaxDdVals: list[float] = []
+        WinRateVals: list[float] = []
+        ProfitFactorVals: list[float] = []
+        Weights: list[float] = []
+
+        for _, Stats, Weight in ResultsByTicker:
+            Sharpe = _get_float(Stats, ["Sharpe Ratio", "SharpeRatio"])
+            Sortino = _get_float(Stats, ["Sortino Ratio", "SortinoRatio"])
+            MaxDd = _get_float(Stats, ["Max. Drawdown [%]", "Max Drawdown [%]", "MaxDrawdown[%]", "MaxDrawdownPct"])  # percent
+            WinRate = _get_float(Stats, ["Win Rate [%]", "WinRate[%]", "WinRatePct"])  # percent
+            ProfitFactor = _get_float(Stats, ["Profit Factor", "ProfitFactor"])  # unitless
+            Trades = _get_float(Stats, ["# Trades", "Trades", "NumTrades"])  # count
+
+            if np.isfinite(Trades):
+                TotalTrades += float(Trades)
+
+            if np.isfinite(Sharpe):
+                SharpeVals.append(Sharpe)
+            if np.isfinite(Sortino):
+                SortinoVals.append(Sortino)
+            if np.isfinite(MaxDd):
+                MaxDdVals.append(MaxDd)
+            if np.isfinite(WinRate):
+                WinRateVals.append(WinRate)
+            if np.isfinite(ProfitFactor):
+                ProfitFactorVals.append(ProfitFactor)
+            Weights.append(float(Weight))
+
+        def _safe_mean(Vals: list[float]) -> float:
+            Arr = np.array(Vals, dtype=float)
+            Finite = Arr[np.isfinite(Arr)]
+            return float(Finite.mean()) if Finite.size > 0 else float("nan")
+
+        def _safe_weighted_mean(Vals: list[float], Weights: list[float]) -> float:
+            Arr = np.array(Vals, dtype=float)
+            W = np.array(Weights, dtype=float)
+            Mask = np.isfinite(Arr) & np.isfinite(W)
+            Arr = Arr[Mask]
+            W = W[Mask]
+            TotalW = float(W.sum())
+            if Arr.size == 0 or TotalW <= 0.0 or not np.isfinite(TotalW):
+                return float("nan")
+            return float(np.average(Arr, weights=W))
+
+        AverageSharpeRatio = _safe_mean(SharpeVals)
+        AverageSortinoRatio = _safe_mean(SortinoVals)
+        AverageMaxDrawdown = _safe_mean(MaxDdVals)
+        AverageWinRatePct = _safe_mean(WinRateVals)
+        AverageProfitFactor = _safe_mean(ProfitFactorVals)
+
+        WeightedSharpeRatio = _safe_weighted_mean(SharpeVals, Weights)
+        WeightedSortinoRatio = _safe_weighted_mean(SortinoVals, Weights)
+        WeightedMaxDrawdown = _safe_weighted_mean(MaxDdVals, Weights)
+        WeightedWinRatePct = _safe_weighted_mean(WinRateVals, Weights)
+
+    # Portfolio-level totals
     try:
         TotalReturnPct = ((TotalFinalEquity / InitialCapital) - 1.0) * 100.0
-        print(f"Total Return [%] (naive sum basis): {TotalReturnPct:,.2f}%")
     except Exception:
-        pass
+        TotalReturnPct = float("nan")
+
+    CombinedMetrics = {
+        "InitialCapital": float(InitialCapital),
+        "TotalFinalEquity": float(TotalFinalEquity),
+        "TotalReturnPct": float(TotalReturnPct),
+        "AverageSharpeRatio": float(AverageSharpeRatio),
+        "AverageSortinoRatio": float(AverageSortinoRatio),
+        "AverageMaxDrawdown": float(AverageMaxDrawdown),
+        "AverageWinRatePct": float(AverageWinRatePct),
+        "AverageProfitFactor": float(AverageProfitFactor),
+        "WeightedSharpeRatio": float(WeightedSharpeRatio),
+        "WeightedSortinoRatio": float(WeightedSortinoRatio),
+        "WeightedMaxDrawdown": float(WeightedMaxDrawdown),
+        "WeightedWinRatePct": float(WeightedWinRatePct),
+        "TotalTrades": float(TotalTrades),
+        "NumTickers": int(len(ResultsByTicker)),
+        "StartDate": StartDate,
+        "EndDate": EndDate,
+        "Interval": Interval,
+    }
+
+    return CombinedMetrics
 
 
 __all__ = [
     "RunSmaCrossoverBacktest",
 ]
-

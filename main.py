@@ -16,6 +16,7 @@ import Config
 import AssetRanking
 import AssetAllocation
 import StrategyBacktest
+import MonteCarloSimulation
 import os
 
 os.chdir('/home/user/stock-screener/')
@@ -96,8 +97,22 @@ if __name__ == "__main__":
             except Exception as Error:
                 print(f"Failed to allocate assets: {Error}")
             else:
-                # Run SMA crossover backtests per allocation and print metrics
+                # Run SMA crossover backtests per allocation and capture combined metrics
                 try:
-                    StrategyBacktest.RunSmaCrossoverBacktest(AllocationFrame=AllocationFrame)
+                    BacktestSummary = StrategyBacktest.RunSmaCrossoverBacktest(AllocationFrame=AllocationFrame)
+                    if isinstance(BacktestSummary, dict) and len(BacktestSummary) > 0:
+                        pd.DataFrame([BacktestSummary]).to_csv('Outputs/BacktestSummary.csv', index=False)
                 except Exception as Error:
                     print(f"Failed to run backtests: {Error}")
+
+                # Run Monte Carlo simulation: pick 50% of tickers equally weighted and append metrics
+                try:
+                    MonteCarloSimulation.RunMonteCarloRandomEqualWeight(
+                        RankingFrame=RankingFrame,
+                        SampleFraction=0.5,
+                        Iterations=50,
+                        OutputPath='Outputs/BacktestSummary.csv',
+                        RandomSeed=None,
+                    )
+                except Exception as Error:
+                    print(f"Failed to run Monte Carlo simulation: {Error}")
